@@ -25,43 +25,17 @@ def db_connection():
 
 
 
-# Add artist (or should I add/update a user)
-@app.route('/artist/', methods=['POST'])
-def add_artist():
-    logger.info("POST /artist")
+# User Registration
+@app.route('/user/', methods=['POST'])
+def user_registration():
+    logger.info('POST /user')
     payload = flask.request.get_json()
 
-    conn = db_connection()
-    cursor = conn.cursor()
+    connection = db_connection()
+    cur = connection.cursor()
 
-    logger.debug(f'POST /artist - payload: {payload}')
-
-    if 'artistic_name' not in payload:
-        response = {'status': StatusCodes['api_error'], 'results': 'artist_name value not in payload'}
-        return flask.jsonify(response)
-
-    # TODO finish statement
-    statement = 'insert into artist (artist_name) values(%s)'
-    values = (payload['artist_name'])
-
-    try:
-        cursor.execute(statement, values)
-
-        conn.commit()
-        response = {'status': StatusCodes['success'], 'results': f'Inserted artist {payload["artist_name"]}'}
-
-    except (Exception, psycopg2.DatabaseError) as error:
-        logger.error(f'POST /artist - error: {error}')
-        response = {'status': StatusCodes['internal_error'], 'errors': str(error)}
-
-        # an error occurred, rollback
-        conn.rollback()
-
-    finally:
-        if conn is not None:
-            conn.close()
-
-    return flask.jsonify(response)
+    # TODO username ou id
+    if 'username' 
 
 
 if __name__ == '__main__':
