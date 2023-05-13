@@ -2,6 +2,7 @@ import flask
 import logging
 import psycopg2
 import time
+import random
 
 app = flask.Flask(__name__)
 
@@ -25,7 +26,8 @@ def db_connection():
 
 
 #TODO birthday e gender são uma complicação de merda, acho que é preferivel tirar, visto que n sao relevantes
-
+# TODO Add consumer? os consumers n deveriam ser users? Cagávamos naquilo de addresses
+# e assim porque n é informação relevante e faziamos premium = bool
 
 # ==@=== REGISTRATIONS ===@==
 @app.route('/user/', methods=['POST'])
@@ -274,8 +276,8 @@ def add_song():
     # TODO isto com ints e assim está a confundir-me um pouco, no meu do ano passado temos tudo como %s 
     statement = 'INSERT INTO song (ismn, title, genre, duration, release_date, explicit)' \
                 'values (%d, %s, %s, %s, %s, %s)'
-    values = (int(payload['idproduct']), payload['productname'], payload['producttype'], payload['description'],
-            payload['productprice'], payload['productstock'])
+    values = (int(payload['ismn']), payload['title'], payload['genre'], payload['duration'],
+            payload['release_date'], payload['explicit'])
 
     try:
         cur.execute(statement, values)
@@ -304,6 +306,44 @@ def add_album():
     # E como se usa a order?
     logging_logger.logger.info('POST /album/')
     payload = flask.request.get_json()
+
+
+@app.route("/playlist/", methods=['POST'])
+def create_playlist():
+    logging_logger.logger.info('POST /playlist/')
+    payload = flask.request.get_json()
+
+    conn = db_connection()
+    cur = conn.cursor()
+
+    logging_logger.logger.debug(f'POST /song - payload: {payload}')
+
+    if 'name' not in payload:
+        response = {'status': StatusCodes['api_error'], 'results': 'ismn value not in payload'}
+        return flask.jsonify(response)
+
+    statement = 'INSERT INTO playlist (id, name, visibility, consumer_userr)' \
+                'values (%d, %s, %s, %s)'
+    values = (int(payload['idproduct']), payload['productname'], payload['producttype'], payload['description'],
+            payload['productprice'], payload['productstock'])
+
+    try:
+        cur.execute(statement, values)
+
+        conn.commit()
+        response = {'status': StatusCodes['success'], 'results': f'Inserted song {payload["ismn"]}'}
+
+    except (Exception, psycopg2.DatabaseError) as error:
+        logging_logger.logger.error(f'POST /song - error: {error}')
+        response = {'status': StatusCodes['internal_error'], 'errors': str(error)}
+
+        conn.rollback()
+
+    finally:
+        if conn is not None:
+            conn.close()
+
+    return flask.jsonify(response)
 
 
 if __name__ == '__main__':
