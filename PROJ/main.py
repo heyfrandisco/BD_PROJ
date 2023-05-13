@@ -29,6 +29,8 @@ def db_connection():
 # TODO Add consumer? os consumers n deveriam ser users? Cagávamos naquilo de addresses
 # e assim porque n é informação relevante e faziamos premium = bool
 
+# TODO usar isto para datas ? (datetime.now(tz=lx_tz).strftime("%Y-%m-%d %H:%M:%S"))
+
 # ==@=== REGISTRATIONS ===@==
 @app.route('/user/', methods=['POST'])
 def user_registration():
@@ -215,7 +217,7 @@ def search_song(keyword):
     conn = db_connection()
     cur = conn.cursor()
 
-    # TODO i think its fine this way
+    # FIXME i think its fine this way
     cur.execute("SELECT ismn, title, genre from song where ismn = %s or title = %s or genre = %s", (keyword, keyword, keyword))
 
     rows = cur.fetchall()
@@ -256,7 +258,6 @@ def detail_artist(name):
     return jsonify(payload)
 
 
-
 # ==@=== FUNCTIONALITIES ===@==
 @app.route("/song/", methods=['POST'])
 @token_required
@@ -273,11 +274,11 @@ def add_song():
         response = {'status': StatusCodes['api_error'], 'results': 'ismn value not in payload'}
         return flask.jsonify(response)
 
-    # TODO isto com ints e assim está a confundir-me um pouco, no meu do ano passado temos tudo como %s 
+    # FIXME isto com ints e assim está a confundir-me um pouco, no meu do ano passado temos tudo como %s 
     statement = 'INSERT INTO song (ismn, title, genre, duration, release_date, explicit)' \
                 'values (%d, %s, %s, %s, %s, %s)'
     values = (int(payload['ismn']), payload['title'], payload['genre'], payload['duration'],
-            payload['release_date'], payload['explicit'])
+            (datetime.now(tz=lx_tz).strftime("%Y-%m-%d %H:%M:%S")), payload['explicit'])
 
     try:
         cur.execute(statement, values)
@@ -309,6 +310,7 @@ def add_album():
 
 
 @app.route("/playlist/", methods=['POST'])
+@token_required
 def create_playlist():
     logging_logger.logger.info('POST /playlist/')
     payload = flask.request.get_json()
@@ -322,19 +324,19 @@ def create_playlist():
         response = {'status': StatusCodes['api_error'], 'results': 'ismn value not in payload'}
         return flask.jsonify(response)
 
+    # FIXME list of tracks to add to playlist
     statement = 'INSERT INTO playlist (id, name, visibility, consumer_userr)' \
                 'values (%d, %s, %s, %s)'
-    values = (int(payload['idproduct']), payload['productname'], payload['producttype'], payload['description'],
-            payload['productprice'], payload['productstock'])
+    values = (random.randint(0, 1000), payload['name'], payload['visibility'], payload['consumer_userr'])
 
     try:
         cur.execute(statement, values)
 
         conn.commit()
-        response = {'status': StatusCodes['success'], 'results': f'Inserted song {payload["ismn"]}'}
+        response = {'status': StatusCodes['success'], 'results': f'Created playlist {payload["name"]}'}
 
     except (Exception, psycopg2.DatabaseError) as error:
-        logging_logger.logger.error(f'POST /song - error: {error}')
+        logging_logger.logger.error(f'POST /playlist - error: {error}')
         response = {'status': StatusCodes['internal_error'], 'errors': str(error)}
 
         conn.rollback()
@@ -344,6 +346,47 @@ def create_playlist():
             conn.close()
 
     return flask.jsonify(response)
+
+
+@app.route("/stream/<ismn>", methods=['POST']) # FIXME not sure se o address está correto
+@token_required # TODO Tem de estar logado ig
+def play_song(ismn):
+    logging_logger.logger.info('POST /stream/')
+    payload = flask.request.get_json()
+
+    conn = db_connection()
+    cur = conn.cursor()
+
+    logging_logger.logger.debug(f'POST /stream - payload: {payload}')
+
+    if 'ismn' not in payload:
+        response = {'status': StatusCodes['api_error'], 'results': 'ismn value not in payload'}
+        return flask.jsonify(response)
+
+    # FIXME isto com ints e assim está a confundir-me um pouco, no meu do ano passado temos tudo como %s 
+    # TODO acho que as datas assim devem funcionar
+    statement = 'INSERT INTO stream (ismn, stream_date, consumer_userr)' \
+                'values (%d, %s, %s)'
+    values = (int(payload['ismn']), (datetime.now(tz=lx_tz).strftime("%Y-%m-%d %H:%M:%S")), payload['consumer_userr'])
+
+    try:
+        cur.execute(statement, values)
+
+        conn.commit()
+        response = {'status': StatusCodes['success'], 'results': f'Inserted stream {payload["ismn"]}'}
+
+    except (Exception, psycopg2.DatabaseError) as error:
+        logging_logger.logger.error(f'POST /stream - error: {error}')
+        response = {'status': StatusCodes['internal_error'], 'errors': str(error)}
+
+        conn.rollback()
+
+    finally:
+        if conn is not None:
+            conn.close()
+
+    return flask.jsonify(response)
+
 
 
 if __name__ == '__main__':
