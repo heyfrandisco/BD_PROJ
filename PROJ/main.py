@@ -196,6 +196,7 @@ def get_all_users():
     cur = connection.cursor()
 
     statement = 'SELECT * from user'
+    cur.execute(statement)
     rows = cur.fetchall()
 
     payload = []
@@ -256,6 +257,33 @@ def detail_artist(name):
     conn.close()
 
     return jsonify(payload)
+
+
+@app.route("/stream/<ismn>", methods=['GET'])
+def get_streams(ismn):
+    logger.info('GET /stream')
+    payload = flask.request.get_json()
+
+    connection = db_connection()
+    cur = connection.cursor()
+
+    # TODO acho que este statemente funciona bem
+    statement = 'SELECT COUNT (stream_data) from stream where song_ismn = %s', ismn
+    cur.execute(statement)
+    rows = cur.fetchall()
+
+    payload = []
+
+    for row in rows:
+        logger.debug(row)
+        content = {'n_streams': row[0]}
+        payload.append(content)
+
+    response = {'status': StatusCodes['success'], 'results': payload}
+
+    conn.close()
+
+    return flask.jsonify(response)
 
 
 # ==@=== FUNCTIONALITIES ===@==
@@ -386,7 +414,6 @@ def play_song(ismn):
             conn.close()
 
     return flask.jsonify(response)
-
 
 
 if __name__ == '__main__':
