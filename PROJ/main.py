@@ -25,7 +25,7 @@ def db_connection():
     return db
 
 
-#TODO birthday e gender são uma complicação de merda, acho que é preferivel tirar, visto que n sao relevantes
+# TODO birthday e gender são uma complicação de merda, acho que é preferivel tirar, visto que n sao relevantes
 # TODO Add consumer? os consumers n deveriam ser users? Cagávamos naquilo de addresses
 # e assim porque n é informação relevante e faziamos premium = bool
 
