@@ -10,6 +10,12 @@ venv/
 .venv/
 env*
 
+# Temporary files
+temp/
+
+# Debug files
+logs/
+
 # IDE files
 .idea/
 docs/_build/
