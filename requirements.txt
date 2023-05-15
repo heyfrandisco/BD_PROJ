@@ -2,3 +2,5 @@ flask
 psycopg2
 dotenv
 jwt
+decrypted
+pytz
