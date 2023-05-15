@@ -7,7 +7,7 @@ The main purpose of this repository is to provide examples on how to do the init
 The system must be made available through a REST API that allows the user to access the system using HTTP requests (when content is required, JSON must be used). The followingfigure represents a simplified view of the system to be developed. As it is possible to see, the user interacts with the web server through the exchange of REST request/response and in turn the web server interacts with the database server through an SQL interface (e.g., Psycopg in the case of Python).
 
 <p align="center">
-  <img src="rest_api.png" />
+  <img src="res/rest_api.png" />
 </p>
 
 _The contents of this repository do not replace the proper reading of the assignment description._
@@ -25,7 +25,7 @@ HTTP works as a request-response protocol. For this work, three main methods mig
 In Postman you need to specify the type of the request when creating a new one. For POST/PUT requests, the data should be sent in the _body_ of the request, using the _raw_ format with _JSON_ as highlighted in the following screenshot. An example can also be found in the demo Postman collection made available.
 
 <p align="center">
-  <img src="postman_post.png" />
+  <img src="res/postman_post.png" />
 </p>
 
 For most of the endpoints it will also be necessary to pass an authentication token. You can define the token for each request in either the _Authorization_ or _Headers_ tab in Postman (which can also be seen in the previous image). 
