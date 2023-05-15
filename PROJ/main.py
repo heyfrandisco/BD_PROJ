@@ -37,8 +37,8 @@ def user_registration():
     logger.info('POST /user')
     payload = flask.request.get_json()
 
-    connection = db_connection()
-    cur = connection.cursor()
+    conn = db_connection()
+    cur = conn.cursor()
 
     if 'username' not in payload:
         response = {'status': StatusCodes['api_error'], 'results': 'username value not in payload'}
@@ -74,8 +74,8 @@ def admin_registration():
     logger.info('POST /administrator')
     payload = flask.request.get_json()
 
-    connection = db_connection()
-    cur = connection.cursor()
+    conn = db_connection()
+    cur = conn.cursor()
 
     if 'username' not in payload:
         response = {'status': StatusCodes['api_error'], 'results': 'username value not in payload'}
@@ -111,8 +111,8 @@ def artist_registration():
     logger.info('POST /artist')
     payload = flask.request.get_json()
 
-    connection = db_connection()
-    cur = connection.cursor()
+    conn = db_connection()
+    cur = conn.cursor()
 
     if 'username' not in payload:
         response = {'status': StatusCodes['api_error'], 'results': 'username value not in payload'}
@@ -174,7 +174,7 @@ def user_authentication():
 
 @app.route("/administrator/", methods=['PUT'])
 def admin_authentication():
-    # TODO fazer autenticação do admin (assumo que tenhamos de ver se o utilizador está na tabela 
+    # TODO fazer autenticação do admin (assumo que tenhamos de ver se o utilizador está na tabela
     # dos admins e depois ver se a passe bate certo na tabela dos users)
     payload = request.get_json()
 
@@ -192,8 +192,8 @@ def get_all_users():
     logger.info('GET /user')
     payload = flask.request.get_json()
 
-    connection = db_connection()
-    cur = connection.cursor()
+    conn = db_connection()
+    cur = conn.cursor()
 
     statement = 'SELECT * from user'
     cur.execute(statement)
@@ -264,8 +264,8 @@ def get_streams(ismn):
     logger.info('GET /stream')
     payload = flask.request.get_json()
 
-    connection = db_connection()
-    cur = connection.cursor()
+    conn = db_connection()
+    cur = conn.cursor()
 
     # TODO acho que este statemente funciona bem
     statement = 'SELECT COUNT (stream_data) from stream where song_ismn = %s', ismn
@@ -302,7 +302,7 @@ def add_song():
         response = {'status': StatusCodes['api_error'], 'results': 'ismn value not in payload'}
         return flask.jsonify(response)
 
-    # FIXME isto com ints e assim está a confundir-me um pouco, no meu do ano passado temos tudo como %s 
+    # FIXME isto com ints e assim está a confundir-me um pouco, no meu do ano passado temos tudo como %s
     statement = 'INSERT INTO song (ismn, title, genre, duration, release_date, explicit)' \
                 'values (%d, %s, %s, %s, %s, %s)'
     values = (int(payload['ismn']), payload['title'], payload['genre'], payload['duration'],
@@ -391,7 +391,7 @@ def play_song(ismn):
         response = {'status': StatusCodes['api_error'], 'results': 'ismn value not in payload'}
         return flask.jsonify(response)
 
-    # FIXME isto com ints e assim está a confundir-me um pouco, no meu do ano passado temos tudo como %s 
+    # FIXME isto com ints e assim está a confundir-me um pouco, no meu do ano passado temos tudo como %s
     # TODO acho que as datas assim devem funcionar
     statement = 'INSERT INTO stream (ismn, stream_date, consumer_userr)' \
                 'values (%d, %s, %s)'
