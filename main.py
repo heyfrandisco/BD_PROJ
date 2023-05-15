@@ -13,14 +13,18 @@ if __name__ == '__main__':
     except FileExistsError:
         pass
     log = "logs/" + datetime.date.today().isoformat() + ".log"
-    logging.basicConfig(filename=log)
-    logger = logging.getLogger("LOGGER:")
+    logger = logging.getLogger("logger")
     logger.setLevel(logging.DEBUG)
-    handler = logging.StreamHandler()
-    handler.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(asctime)s [%(levelname)s]:  %(message)s', '%H:%M:%S')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+    formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s', '%H:%M:%S')
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(logging.DEBUG)
+    stream_handler.setFormatter(formatter)
+    logger.addHandler(stream_handler)
+    file_handler = logging.FileHandler(log)
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    logger.info("Intializing API...")
 
     # define status codes
     StatusCodes = {
@@ -29,8 +33,12 @@ if __name__ == '__main__':
     "internal_error": 500
     }
 
+    logger.info("Defined status codes")
+
     # load environment variables
     dotenv.load_dotenv()
+
+    logger.info("Loaded environment variables")
 
     #set up server
     app = flask.Flask(__name__)
@@ -39,7 +47,7 @@ if __name__ == '__main__':
     port = os.environ.get("SERVER_PORT")
     app.run(host = host, debug = True, threaded = True, port = port)
 
-    logger.info(f'API v1.0 online: http://{host}:{port}')
+    logger.info(f'API online: http://{host}:{port}')
 
 def db_connection():
     db = psycopg2.connect(
