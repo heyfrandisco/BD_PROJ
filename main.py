@@ -3,23 +3,51 @@ import logging
 import psycopg2
 import datetime
 import random
+import dotenv
 import os
 
-app = flask.Flask(__name__)
+if __name__ == '__main__':
+    # set up logging
+    try:
+        os.makedirs("logs")
+    except FileExistsError:
+        pass
+    log = "/logs" + datetime.date.today().isoformat() + ".log"
+    logging.basicConfig(filename=log)
+    logger = logging.getLogger("LOGGER:")
+    logger.setLevel(logging.DEBUG)
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s [%(levelname)s]:  %(message)s', '%H:%M:%S')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
-StatusCodes = {
-    'success': 200,
-    'api_error': 400,
-    'internal_error': 500
-}
+    # define status codes
+    StatusCodes = {
+    "success": 200,
+    "api_error": 400,
+    "internal_error": 500
+    }
+
+    # load environment variables
+    dotenv.load_dotenv()
+
+    #set up server
+    app = flask.Flask(__name__)
+    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
+    host = os.environ.get("SERVER_HOST")
+    port = os.environ.get("SERVER_PORT")
+    app.run(host=host, debug=True, threaded=True, port=port)
+
+    logger.info(f'API v1.0 online: http://{host}:{port}')
 
 def db_connection():
     db = psycopg2.connect(
-        user='aulaspl',
-        password='aulaspl',
-        host='127.0.0.1',
-        port='5432',
-        database='dbfichas'
+        database = os.environ.get("DB_DATABASE")
+        user = os.environ.get("DB_USER"),
+        password = os.environ.get("DB_PASSWORD"),
+        host = os.environ.get("DB_HOST"),
+        port= os.environ.get("DB_PORT"),
     )
     return db
 
@@ -29,7 +57,6 @@ def db_connection():
 
 # TODO usar isto para datas ? datetime.date.today().isoformat()
 
-# ==@=== REGISTRATIONS ===@==
 @app.route('/user/', methods=['POST'])
 def user_registration():
     logger.info('POST /user')
@@ -132,7 +159,6 @@ def artist_registration():
     return flask.jsonify(response)
 
 
-# ==@=== AUTHENTICATIONS ===@==
 @app.route("/user/", methods = ['PUT'])
 def user_authentication():
     payload = flask.request.get_json()
@@ -175,7 +201,6 @@ def artist_authentication():
     payload = flask.request.get_json()
 
 
-# ==@=== GETs ===@==
 @app.route("/user/", methods=['GET'])
 def get_all_users():
     logger.info('GET /user')
@@ -275,7 +300,6 @@ def get_streams(ismn):
     return flask.jsonify(response)
 
 
-# ==@=== FUNCTIONALITIES ===@==
 @app.route("/song/", methods=['POST'])
 #@token_required
 def add_song():
@@ -399,29 +423,3 @@ def play_song(ismn):
             conn.close()
 
     return flask.jsonify(response)
-
-
-# ==@=== MAIN ===@==
-if __name__ == '__main__':
-
-    # set up logging
-    try:
-        os.makedirs("logs")
-    except FileExistsError:
-        pass
-    log = "/logs" + datetime.date.today().isoformat() + ".log"
-    logging.basicConfig(filename=log)
-    logger = logging.getLogger("LOGGER:")
-    logger.setLevel(logging.DEBUG)
-    handler = logging.StreamHandler()
-    handler.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(asctime)s [%(levelname)s]:  %(message)s', '%H:%M:%S')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-
-    #set up server
-    host = '127.0.0.1'
-    port = 8080
-    app.run(host=host, debug=True, threaded=True, port=port)
-
-    logger.info(f'API v1.0 online: http://{host}:{port}')
