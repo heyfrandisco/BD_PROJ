@@ -12,7 +12,7 @@ if __name__ == '__main__':
         os.makedirs("logs")
     except FileExistsError:
         pass
-    log = "/logs" + datetime.date.today().isoformat() + ".log"
+    log = "logs/" + datetime.date.today().isoformat() + ".log"
     logging.basicConfig(filename=log)
     logger = logging.getLogger("LOGGER:")
     logger.setLevel(logging.DEBUG)
@@ -37,7 +37,7 @@ if __name__ == '__main__':
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
     host = os.environ.get("SERVER_HOST")
     port = os.environ.get("SERVER_PORT")
-    app.run(host=host, debug=True, threaded=True, port=port)
+    app.run(host = host, debug = True, threaded = True, port = port)
 
     logger.info(f'API v1.0 online: http://{host}:{port}')
 
