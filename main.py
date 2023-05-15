@@ -12,7 +12,6 @@ StatusCodes = {
     'internal_error': 500
 }
 
-
 def db_connection():
     db = psycopg2.connect(
         user='aulaspl',
@@ -21,9 +20,7 @@ def db_connection():
         port='5432',
         database='dbfichas'
     )
-
     return db
-
 
 # TODO birthday e gender são uma complicação de merda, acho que é preferivel tirar, visto que n sao relevantes
 # TODO Add consumer? os consumers n deveriam ser users? Cagávamos naquilo de addresses
@@ -106,7 +103,7 @@ def admin_registration():
 
 
 @app.route('/artist/', methods=['POST'])
-@token_required
+#@token_required
 def artist_registration():
     logger.info('POST /artist')
     payload = flask.request.get_json()
@@ -288,7 +285,7 @@ def get_streams(ismn):
 
 # ==@=== FUNCTIONALITIES ===@==
 @app.route("/song/", methods=['POST'])
-@token_required
+#@token_required
 def add_song():
     logger.info('POST /song/')
     payload = flask.request.get_json()
@@ -328,7 +325,7 @@ def add_song():
 
 
 @app.route("/album/", methods=['POST'])
-@token_required
+#@token_required
 def add_album():
     # TODO kinda confused on this one
     # é preciso inserir logo uma musica? Ou quando criamos uma musica criamos um album?
@@ -338,7 +335,7 @@ def add_album():
 
 
 @app.route("/playlist/", methods=['POST'])
-@token_required
+#@token_required
 def create_playlist():
     logger.info('POST /playlist/')
     payload = flask.request.get_json()
@@ -377,7 +374,7 @@ def create_playlist():
 
 
 @app.route("/stream/<ismn>", methods=['POST']) # FIXME not sure se o address está correto
-@token_required # TODO Tem de estar logado ig
+#@token_required # TODO Tem de estar logado ig
 def play_song(ismn):
     logger.info('POST /stream/')
     payload = flask.request.get_json()
