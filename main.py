@@ -43,11 +43,11 @@ if __name__ == '__main__':
 
 def db_connection():
     db = psycopg2.connect(
-        database = os.environ.get("DB_DATABASE")
+        database = os.environ.get("DB_DATABASE"),
         user = os.environ.get("DB_USER"),
         password = os.environ.get("DB_PASSWORD"),
         host = os.environ.get("DB_HOST"),
-        port= os.environ.get("DB_PORT"),
+        port = os.environ.get("DB_PORT")
     )
     return db
 
