@@ -61,7 +61,6 @@ def token_required(f):
 
 def hashing(password):
     salt = os.urandom(32)
-    key
     dk = hs.pbkdf2_hmac('sha256', password.encode('utf-8'), b'salt', 100000)
 
 
