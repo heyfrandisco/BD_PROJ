@@ -21,7 +21,6 @@ from flask import Flask, jsonify, request
 import logging
 import time
 import psycopg2
-import decrypted
 import pytz
 import jwt
 from functools import wraps
@@ -91,7 +90,7 @@ def hello():
 ##
 """@app.route("/departments/", methods=['GET'], strict_slashes=True)
 def get_all_departments():
-    logger.info("###              DEMO: GET /departments              ###");   
+    logger.info("###              DEMO: GET /departments              ###");
 
     conn = db_connection()
     cur = conn.cursor()
@@ -116,14 +115,14 @@ def get_all_departments():
 ##
 ## Obtain department with ndep <ndep>
 ##
-## To use it, access: 
-## 
+## To use it, access:
+##
 ## http://localhost:8080/
 ##
 
 @app.route("/departments/<ndep>", methods=['GET'])
 def get_department(ndep):
-    logger.info("###              DEMO: GET /departments/<ndep>              ###");   
+    logger.info("###              DEMO: GET /departments/<ndep>              ###");
 
     logger.debug(f'ndep: {ndep}')
 
@@ -166,7 +165,7 @@ def add_user():
 
     # parameterized queries, good for security and performance
     statement = """
-                  INSERT INTO data_user (username, password, email) 
+                  INSERT INTO data_user (username, password, email)
                           VALUES ( %s,   %s,   %s)"""
 
     values = (payload["username"], payload["password"], payload["email"])
@@ -201,7 +200,7 @@ def add_admin():
 
     # parameterized queries, good for security and performance
     statement = """
-                  INSERT INTO data_admin (password, username) 
+                  INSERT INTO data_admin (password, username)
                           VALUES ( %s,   %s)"""
 
     values = (payload["password"], payload["username"])
@@ -385,7 +384,7 @@ def add_product(current_user):
 
     # parameterized queries, good for security and performance
     statement = '''
-                  INSERT INTO produtos (ean, nome__do_produto,quantidade) 
+                  INSERT INTO produtos (ean, nome__do_produto,quantidade)
                           VALUES (%s,   %s,   %s)'''
 
     values = (payload["ean"], payload["nome_do_produto"],
@@ -431,7 +430,7 @@ def add_leiloes(current_user):
     rows_user = cur.fetchall()
     if rows_user[0][0] == False:
         statement = '''
-                    INSERT INTO leiloes(titulo,descricao,detalhes,data_inicial,data_final_,preco_inicial,preco_corrente,user_vencedor,data_user_username,produtos_ean) 
+                    INSERT INTO leiloes(titulo,descricao,detalhes,data_inicial,data_final_,preco_inicial,preco_corrente,user_vencedor,data_user_username,produtos_ean)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,%s)'''
 
         values = (
@@ -644,7 +643,7 @@ def post_licitacao(user_licitador, licitacao, data, leilaoID):
     logger.debug("boas")
     # parameterized queries, good for security and performance
     statement = '''
-                  INSERT INTO licitacoes (valor, data,leiloes_id_leilao,data_user_username) 
+                  INSERT INTO licitacoes (valor, data,leiloes_id_leilao,data_user_username)
                           VALUES (%s,   %s,   %s,  %s)'''
 
     values = (licitacao, data, leilaoID, user_licitador)
@@ -680,7 +679,7 @@ def write_private_message(text, date, leilaoID, write_user, user):
 
     # parameterized queries, good for security and performance
     statement = '''
-                  INSERT INTO mensagem_privada (texto,data,leiloes_id_leilao,data_user_username,data_user_username1) 
+                  INSERT INTO mensagem_privada (texto,data,leiloes_id_leilao,data_user_username,data_user_username1)
                           VALUES (%s, %s,%s, %s, %s)'''
     values = (text, date, leilaoID, write_user, user)
 
@@ -1153,7 +1152,7 @@ def my_background_task():
 """
 @app.route("/departments/", methods=['PUT'])
 def update_departments():
-    logger.info("###              DEMO: PUT /departments              ###");   
+    logger.info("###              DEMO: PUT /departments              ###");
     content = request.get_json()
 
     conn = db_connection()
@@ -1172,7 +1171,7 @@ def update_departments():
 
     # parameterized queries, good for security and performance
     statement =
-                UPDATE dep 
+                UPDATE dep
                   SET local = %s
                 WHERE ndep = %s
 
@@ -1197,12 +1196,11 @@ def update_departments():
 ##########################################################
 
 def db_connection():
-    arr = decrypted.info()
-    db = psycopg2.connect(user=arr[0],
-                          password=arr[1],
-                          host=arr[2],
-                          port=arr[3],
-                          database=arr[4])
+    db = psycopg2.connect(user="a",
+                          password="b",
+                          host="c",
+                          port="d",
+                          database="e")
     return db
 
 
