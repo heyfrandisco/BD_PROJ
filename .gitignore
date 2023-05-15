@@ -1,0 +1,17 @@
+
+# Environment variables
+.DS_Store
+.env
+!template.env
+.flaskenv
+*.pyc
+*.pyo
+env/
+venv/
+.venv/
+env*
+
+# Vscode / JetBrains / Documents
+.idea/
+docs/_build/
+.vscode
