@@ -267,26 +267,16 @@ def idGenerator(colum, table):
     return result[0] + 1
 
 
-def main():
+if __name__ == "__main__":
     # Set up the logging
     logging.basicConfig(filename="log_file.log")
     logger = logging.getLogger('logger')
     logger.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
-    # create formatter
     formatter = logging.Formatter('%(asctime)s [%(levelname)s]:  %(message)s', '%H:%M:%S')
-    # "%Y-%m-%d %H:%M:%S") # not using DATE to simplify
     ch.setFormatter(formatter)
     logger.addHandler(ch)
-
-    time.sleep(1)  # just to let the DB start before this print :-)
-
     logger.info("\n---------------------------------------------------------------\n" +
                         "API v1.0 online: http://localhost:8080\n\n")
-
     app.run(host="0.0.0.0", debug=True, threaded=True, port=8080)
-
-
-if __name__ == "__main__":
-    main()
