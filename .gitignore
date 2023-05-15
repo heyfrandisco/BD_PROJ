@@ -3,12 +3,6 @@
 .DS_Store
 .env
 .flaskenv
-*.pyc
-*.pyo
-env/
-venv/
-.venv/
-env*
 
 # Temporary files
 temp/
@@ -17,6 +11,5 @@ temp/
 logs/
 
 # IDE files
-.idea/
-docs/_build/
-.vscode/
+.idea
+.vscode
