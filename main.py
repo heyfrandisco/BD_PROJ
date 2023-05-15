@@ -45,9 +45,9 @@ if __name__ == '__main__':
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
     host = os.environ.get("SERVER_HOST")
     port = os.environ.get("SERVER_PORT")
-    app.run(host = host, debug = True, threaded = True, port = port)
 
     logger.info(f'API online: http://{host}:{port}')
+    app.run(host = host, debug = True, threaded = True, port = port)
 
 def db_connection():
     db = psycopg2.connect(
