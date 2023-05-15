@@ -2,7 +2,6 @@
 # Environment variables
 .DS_Store
 .env
-!template.env
 .flaskenv
 *.pyc
 *.pyo
