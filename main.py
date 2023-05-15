@@ -1,7 +1,7 @@
 import flask
 import logging
 import psycopg2
-import time
+import datetime
 import random
 
 app = flask.Flask(__name__)
@@ -26,7 +26,7 @@ def db_connection():
 # TODO Add consumer? os consumers n deveriam ser users? Cagávamos naquilo de addresses
 # e assim porque n é informação relevante e faziamos premium = bool
 
-# TODO usar isto para datas ? (datetime.now(tz=lx_tz).strftime("%Y-%m-%d %H:%M:%S"))
+# TODO usar isto para datas ? datetime.date.today().isoformat()
 
 # ==@=== REGISTRATIONS ===@==
 @app.route('/user/', methods=['POST'])
@@ -47,16 +47,13 @@ def user_registration():
 
     try:
         cur.execute(statement, values)
-
-        # commit the transaction
         conn.commit()
         response = {'status': StatusCodes['success'], 'results': f'Inserted user {payload["username"]}'}
 
+    # an error occurred, rollback
     except (Exception, psycopg2.DatabaseError) as error:
         logger.error(f'POST /user/ - error: {error}')
         response = {'status': StatusCodes['internal_error'], 'errors': str(error)}
-
-        # an error occurred, rollback
         conn.rollback()
 
     finally:
@@ -83,16 +80,13 @@ def admin_registration():
 
     try:
         cur.execute(statement, values)
-
-        # commit the transaction
         conn.commit()
         response = {'status': StatusCodes['success'], 'results': f'Inserted user {payload["username"]}'}
 
+    # an error occurred, rollback
     except (Exception, psycopg2.DatabaseError) as error:
         logger.error(f'POST /administrator/ - error: {error}')
         response = {'status': StatusCodes['internal_error'], 'errors': str(error)}
-
-        # an error occurred, rollback
         conn.rollback()
 
     finally:
@@ -121,16 +115,13 @@ def artist_registration():
 
     try:
         cur.execute(statement, values)
-
-        # commit the transaction
         conn.commit()
         response = {'status': StatusCodes['success'], 'results': f'Inserted user {payload["username"]}'}
 
+    # an error occurred, rollback
     except (Exception, psycopg2.DatabaseError) as error:
         logger.error(f'POST /artist/ - error: {error}')
         response = {'status': StatusCodes['internal_error'], 'errors': str(error)}
-
-        # an error occurred, rollback
         conn.rollback()
 
     finally:
@@ -177,7 +168,7 @@ def admin_authentication():
 
 
 @app.route("/artist/", methods=['PUT'])
-def admin_authentication():
+def artist_authentication():
     # TODO fazer algo semelhante do admin, so que ver se o username está na tabela
     # dos artistas e depois comparar com a pass na tabela dos users
     payload = flask.request.get_json()
@@ -303,11 +294,10 @@ def add_song():
     statement = 'INSERT INTO song (ismn, title, genre, duration, release_date, explicit)' \
                 'values (%d, %s, %s, %s, %s, %s)'
     values = (int(payload['ismn']), payload['title'], payload['genre'], payload['duration'],
-            (datetime.now(tz=lx_tz).strftime("%Y-%m-%d %H:%M:%S")), payload['explicit'])
+              datetime.date.today().isoformat(), payload['explicit'])
 
     try:
         cur.execute(statement, values)
-
         conn.commit()
         response = {'status': StatusCodes['success'], 'results': f'Inserted song {payload["ismn"]}'}
 
@@ -339,7 +329,6 @@ def add_album():
 def create_playlist():
     logger.info('POST /playlist/')
     payload = flask.request.get_json()
-
     conn = db_connection()
     cur = conn.cursor()
 
@@ -356,7 +345,6 @@ def create_playlist():
 
     try:
         cur.execute(statement, values)
-
         conn.commit()
         response = {'status': StatusCodes['success'], 'results': f'Created playlist {payload["name"]}'}
 
@@ -392,11 +380,10 @@ def play_song(ismn):
     # TODO acho que as datas assim devem funcionar
     statement = 'INSERT INTO stream (ismn, stream_date, consumer_userr)' \
                 'values (%d, %s, %s)'
-    values = (int(payload['ismn']), (datetime.now(tz=lx_tz).strftime("%Y-%m-%d %H:%M:%S")), payload['consumer_userr'])
+    values = (int(payload['ismn']), datetime.date.today().isoformat(), payload['consumer_userr'])
 
     try:
         cur.execute(statement, values)
-
         conn.commit()
         response = {'status': StatusCodes['success'], 'results': f'Inserted stream {payload["ismn"]}'}
 
