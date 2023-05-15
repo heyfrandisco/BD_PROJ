@@ -6,6 +6,7 @@
 
 # Temporary files
 temp/
+__pycache__/
 
 # Debug files
 logs/
