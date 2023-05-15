@@ -11,7 +11,7 @@ venv/
 .venv/
 env*
 
-# Vscode / JetBrains / Documents
+# IDE files
 .idea/
 docs/_build/
 .vscode/
