@@ -146,27 +146,27 @@ def artist_registration():
 # ==@=== AUTHENTICATIONS ===@==
 @app.route("/user/", methods = ['PUT'])
 def user_authentication():
-    payload = request.get_json()
+    payload = flask.request.get_json()
 
     conn = db_connection()
     cur = conn.cursor()
 
-    logging_logger.logger.info("AUTENTICATE /user")
-    logging_logger.logger.debug(f'payload: {payload}')
+    logger.info("AUTENTICATE /user")
+    logger.debug(f'payload: {payload}')
 
     cur.execute("SELECT password FROM user WHERE username=%s", (payload["username"],))
-    logging_logger.logger.debug(f'payload: {payload["username"]}')
+    logger.debug(f'payload: {payload["username"]}')
 
     password = cur.fetchall()
     if (len(password) == 0):
         result = {"Error:": "Invalid Login"}
-        return jsonify(result)
+        return flask.jsnofiy(result)
 
     if (password[0][0] != payload["password"]):
         result = {"Error": "Invalid Login"}
         if conn is not None:
             conn.close()
-        return jsonify(result)
+        return flask.jsnofiy(result)
 
     # TODO isto estava no meu do ano passado
     # token = jwt.encode({'iduser': payload["iduser"],'exp': datetime.utcnow() + timedelta(minutes = 30)}, app.config['SECRET_KEY'], algorithm = "HS256")
@@ -176,21 +176,21 @@ def user_authentication():
 def admin_authentication():
     # TODO fazer autenticação do admin (assumo que tenhamos de ver se o utilizador está na tabela
     # dos admins e depois ver se a passe bate certo na tabela dos users)
-    payload = request.get_json()
+    payload = flask.request.get_json()
 
 
 @app.route("/artist/", methods=['PUT'])
 def admin_authentication():
     # TODO fazer algo semelhante do admin, so que ver se o username está na tabela
     # dos artistas e depois comparar com a pass na tabela dos users
-    payload = request.get_json()
+    payload = flask.request.get_json()
 
 
 # ==@=== GETs ===@==
 @app.route("/user/", methods=['GET'])
 def get_all_users():
     logger.info('GET /user')
-    payload = flask.request.get_json()
+    payload = flask.flask.request.get_json()
 
     conn = db_connection()
     cur = conn.cursor()
@@ -224,16 +224,16 @@ def search_song(keyword):
     rows = cur.fetchall()
 
     payload = []
-    logging_logger.logger.debug("Songs:")
+    logger.debug("Songs:")
 
     for row in rows:
         content = {'ismn': int(row[0]), 'title': row[1], 'genre': row[2]}
         payload.append(content)
-        logging_logger.logger.debug(row)
+        logger.debug(row)
 
     conn.close()
 
-    return jsonify(payload)
+    return flask.jsnofiy(payload)
 
 
 @app.route("/artist/<name>", methods=['GET'])
@@ -247,22 +247,22 @@ def detail_artist(name):
     rows = cur.fetchall()
 
     payload = []
-    logging_logger.logger.debug("Artist Details:")
+    logger.debug("Artist Details:")
 
     for row in rows:
         content = {'Artist Name': name, 'label_name': row[0]}
         payload.append(content)
-        logging_logger.logger.debug(row)
+        logger.debug(row)
 
     conn.close()
 
-    return jsonify(payload)
+    return flask.jsnofiy(payload)
 
 
 @app.route("/stream/<ismn>", methods=['GET'])
 def get_streams(ismn):
     logger.info('GET /stream')
-    payload = flask.request.get_json()
+    payload = flask.flask.request.get_json()
 
     conn = db_connection()
     cur = conn.cursor()
@@ -290,13 +290,13 @@ def get_streams(ismn):
 @app.route("/song/", methods=['POST'])
 @token_required
 def add_song():
-    logging_logger.logger.info('POST /song/')
+    logger.info('POST /song/')
     payload = flask.request.get_json()
 
     conn = db_connection()
     cur = conn.cursor()
 
-    logging_logger.logger.debug(f'POST /song - payload: {payload}')
+    logger.debug(f'POST /song - payload: {payload}')
 
     if 'ismn' not in payload:
         response = {'status': StatusCodes['api_error'], 'results': 'ismn value not in payload'}
@@ -315,7 +315,7 @@ def add_song():
         response = {'status': StatusCodes['success'], 'results': f'Inserted song {payload["ismn"]}'}
 
     except (Exception, psycopg2.DatabaseError) as error:
-        logging_logger.logger.error(f'POST /song - error: {error}')
+        logger.error(f'POST /song - error: {error}')
         response = {'status': StatusCodes['internal_error'], 'errors': str(error)}
 
         conn.rollback()
@@ -333,20 +333,20 @@ def add_album():
     # TODO kinda confused on this one
     # é preciso inserir logo uma musica? Ou quando criamos uma musica criamos um album?
     # E como se usa a order?
-    logging_logger.logger.info('POST /album/')
+    logger.info('POST /album/')
     payload = flask.request.get_json()
 
 
 @app.route("/playlist/", methods=['POST'])
 @token_required
 def create_playlist():
-    logging_logger.logger.info('POST /playlist/')
+    logger.info('POST /playlist/')
     payload = flask.request.get_json()
 
     conn = db_connection()
     cur = conn.cursor()
 
-    logging_logger.logger.debug(f'POST /song - payload: {payload}')
+    logger.debug(f'POST /song - payload: {payload}')
 
     if 'name' not in payload:
         response = {'status': StatusCodes['api_error'], 'results': 'ismn value not in payload'}
@@ -364,7 +364,7 @@ def create_playlist():
         response = {'status': StatusCodes['success'], 'results': f'Created playlist {payload["name"]}'}
 
     except (Exception, psycopg2.DatabaseError) as error:
-        logging_logger.logger.error(f'POST /playlist - error: {error}')
+        logger.error(f'POST /playlist - error: {error}')
         response = {'status': StatusCodes['internal_error'], 'errors': str(error)}
 
         conn.rollback()
@@ -379,13 +379,13 @@ def create_playlist():
 @app.route("/stream/<ismn>", methods=['POST']) # FIXME not sure se o address está correto
 @token_required # TODO Tem de estar logado ig
 def play_song(ismn):
-    logging_logger.logger.info('POST /stream/')
+    logger.info('POST /stream/')
     payload = flask.request.get_json()
 
     conn = db_connection()
     cur = conn.cursor()
 
-    logging_logger.logger.debug(f'POST /stream - payload: {payload}')
+    logger.debug(f'POST /stream - payload: {payload}')
 
     if 'ismn' not in payload:
         response = {'status': StatusCodes['api_error'], 'results': 'ismn value not in payload'}
@@ -404,7 +404,7 @@ def play_song(ismn):
         response = {'status': StatusCodes['success'], 'results': f'Inserted stream {payload["ismn"]}'}
 
     except (Exception, psycopg2.DatabaseError) as error:
-        logging_logger.logger.error(f'POST /stream - error: {error}')
+        logger.error(f'POST /stream - error: {error}')
         response = {'status': StatusCodes['internal_error'], 'errors': str(error)}
 
         conn.rollback()
