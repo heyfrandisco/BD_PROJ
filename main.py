@@ -7,7 +7,7 @@ import dotenv
 import os
 
 if __name__ == '__main__':
-    # set up logging
+    # setup logging
     try:
         os.makedirs("logs")
     except FileExistsError:
@@ -40,18 +40,15 @@ if __name__ == '__main__':
 
     logger.info("Loaded environment variables")
 
-    #set up server
+    # setup server
     app = flask.Flask(__name__)
-    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
+    app.config["SECRET_KEY"] = os.environ.get("SERVER_SECRET_KEY")
     host = os.environ.get("SERVER_HOST")
     port = os.environ.get("SERVER_PORT")
 
-    logger.info(f'API online: http://{host}:{port}')
-    app.run(host = host, threaded = True, port = port)
-
 def db_connection():
     db = psycopg2.connect(
-        database = os.environ.get("DB_DATABASE"),
+        database = os.environ.get("DB_NAME"),
         user = os.environ.get("DB_USER"),
         password = os.environ.get("DB_PASSWORD"),
         host = os.environ.get("DB_HOST"),
@@ -65,9 +62,18 @@ def db_connection():
 
 # TODO usar isto para datas ? datetime.date.today().isoformat()
 
-@app.route('/user/', methods=['POST'])
+@app.route('/')
+def hello():
+    return """
+    Hey there!
+    <br/>
+    Check the documentation for instructions on how to use the endpoints!<br/>
+    <br/>
+    """
+
+@app.route('/users/', methods=['POST'])
 def user_registration():
-    logger.info('POST /user')
+    logger.info('POST /users')
     payload = flask.request.get_json()
 
     conn = db_connection()
@@ -78,17 +84,17 @@ def user_registration():
         return flask.jsonify(response)
 
     # TODO remove gender | criar artista usando admin ?
-    statement = 'INSERT INTO user (username, password, full_name, birthday, email) VALUES (%s, %s, %s, %s, %s)'
+    statement = 'INSERT INTO users (username, password, full_name, birthday, email) VALUES (%s, %s, %s, %s, %s)'
     values = (payload['username'], payload['password'], payload['full_name'], payload['birthday'], payload['email'])
 
     try:
         cur.execute(statement, values)
         conn.commit()
-        response = {'status': StatusCodes['success'], 'results': f'Inserted user {payload["username"]}'}
+        response = {'status': StatusCodes['success'], 'results': f'Inserted users {payload["username"]}'}
 
     # an error occurred, rollback
     except (Exception, psycopg2.DatabaseError) as error:
-        logger.error(f'POST /user/ - error: {error}')
+        logger.error(f'POST /users/ - error: {error}')
         response = {'status': StatusCodes['internal_error'], 'errors': str(error)}
         conn.rollback()
 
@@ -97,7 +103,6 @@ def user_registration():
             conn.close()
 
     return flask.jsonify(response)
-
 
 @app.route('/administrator/', methods=['POST'])
 def admin_registration():
@@ -117,7 +122,7 @@ def admin_registration():
     try:
         cur.execute(statement, values)
         conn.commit()
-        response = {'status': StatusCodes['success'], 'results': f'Inserted user {payload["username"]}'}
+        response = {'status': StatusCodes['success'], 'results': f'Inserted users {payload["username"]}'}
 
     # an error occurred, rollback
     except (Exception, psycopg2.DatabaseError) as error:
@@ -152,7 +157,7 @@ def artist_registration():
     try:
         cur.execute(statement, values)
         conn.commit()
-        response = {'status': StatusCodes['success'], 'results': f'Inserted user {payload["username"]}'}
+        response = {'status': StatusCodes['success'], 'results': f'Inserted users {payload["username"]}'}
 
     # an error occurred, rollback
     except (Exception, psycopg2.DatabaseError) as error:
@@ -167,17 +172,17 @@ def artist_registration():
     return flask.jsonify(response)
 
 
-@app.route("/user/", methods = ['PUT'])
+@app.route("/users/", methods = ['PUT'])
 def user_authentication():
     payload = flask.request.get_json()
 
     conn = db_connection()
     cur = conn.cursor()
 
-    logger.info("AUTENTICATE /user")
+    logger.info("AUTENTICATE /users")
     logger.debug(f'payload: {payload}')
 
-    cur.execute("SELECT password FROM user WHERE username=%s", (payload["username"],))
+    cur.execute("SELECT password FROM users WHERE username=%s", (payload["username"],))
     logger.debug(f'payload: {payload["username"]}')
 
     password = cur.fetchall()
@@ -209,15 +214,15 @@ def artist_authentication():
     payload = flask.request.get_json()
 
 
-@app.route("/user/", methods=['GET'])
+@app.route("/users/", methods=['GET'])
 def get_all_users():
-    logger.info('GET /user')
+    logger.info('GET /users')
     payload = flask.flask.request.get_json()
 
     conn = db_connection()
     cur = conn.cursor()
 
-    statement = 'SELECT * from user'
+    statement = 'SELECT * from users'
     cur.execute(statement)
     rows = cur.fetchall()
 
@@ -235,13 +240,13 @@ def get_all_users():
     return flask.jsonify(response)
 
 
-@app.route("/song/<keyword>", methods=['GET'])
+@app.route("/songs/<keyword>", methods=['GET'])
 def search_song(keyword):
     conn = db_connection()
     cur = conn.cursor()
 
     # FIXME i think its fine this way
-    cur.execute("SELECT ismn, title, genre from song where ismn = %s or title = %s or genre = %s", (keyword, keyword, keyword))
+    cur.execute("SELECT ismn, title, genre from songs where ismn = %s or title = %s or genre = %s", (keyword, keyword, keyword))
 
     rows = cur.fetchall()
 
@@ -258,13 +263,13 @@ def search_song(keyword):
     return flask.jsnofiy(payload)
 
 
-@app.route("/artist/<name>", methods=['GET'])
+@app.route("/artists/<name>", methods=['GET'])
 def detail_artist(name):
     conn = db_connection()
     cur = conn.cursor()
 
     # TODO n está acabada, é preciso fazer mais cenas ig
-    cur.execute("SELECT label_name from artist where artistic_name = %s UNION select title from album where artist_userr = %s", (name, name))
+    cur.execute("SELECT label_name from artists where artistic_name = %s UNION select title from album where artist_userr = %s", (name, name))
 
     rows = cur.fetchall()
 
@@ -281,7 +286,7 @@ def detail_artist(name):
     return flask.jsnofiy(payload)
 
 
-@app.route("/stream/<ismn>", methods=['GET'])
+@app.route("/streams/<ismn>", methods=['GET'])
 def get_streams(ismn):
     logger.info('GET /stream')
     payload = flask.flask.request.get_json()
@@ -290,7 +295,7 @@ def get_streams(ismn):
     cur = conn.cursor()
 
     # TODO acho que este statemente funciona bem
-    statement = 'SELECT COUNT (stream_data) from stream where song_ismn = %s', ismn
+    statement = 'SELECT COUNT (stream_data) from streams where song_ismn = %s', ismn
     cur.execute(statement)
     rows = cur.fetchall()
 
@@ -308,23 +313,23 @@ def get_streams(ismn):
     return flask.jsonify(response)
 
 
-@app.route("/song/", methods=['POST'])
+@app.route("/songs/", methods=['POST'])
 #@token_required
 def add_song():
-    logger.info('POST /song/')
+    logger.info('POST /songs/')
     payload = flask.request.get_json()
 
     conn = db_connection()
     cur = conn.cursor()
 
-    logger.debug(f'POST /song - payload: {payload}')
+    logger.debug(f'POST /songs - payload: {payload}')
 
     if 'ismn' not in payload:
         response = {'status': StatusCodes['api_error'], 'results': 'ismn value not in payload'}
         return flask.jsonify(response)
 
     # FIXME isto com ints e assim está a confundir-me um pouco, no meu do ano passado temos tudo como %s
-    statement = 'INSERT INTO song (ismn, title, genre, duration, release_date, explicit)' \
+    statement = 'INSERT INTO songs (ismn, title, genre, duration, release_date, explicit)' \
                 'values (%d, %s, %s, %s, %s, %s)'
     values = (int(payload['ismn']), payload['title'], payload['genre'], payload['duration'],
               datetime.date.today().isoformat(), payload['explicit'])
@@ -332,10 +337,10 @@ def add_song():
     try:
         cur.execute(statement, values)
         conn.commit()
-        response = {'status': StatusCodes['success'], 'results': f'Inserted song {payload["ismn"]}'}
+        response = {'status': StatusCodes['success'], 'results': f'Inserted songs {payload["ismn"]}'}
 
     except (Exception, psycopg2.DatabaseError) as error:
-        logger.error(f'POST /song - error: {error}')
+        logger.error(f'POST /songs - error: {error}')
         response = {'status': StatusCodes['internal_error'], 'errors': str(error)}
 
         conn.rollback()
@@ -347,7 +352,7 @@ def add_song():
     return flask.jsonify(response)
 
 
-@app.route("/album/", methods=['POST'])
+@app.route("/albums/", methods=['POST'])
 #@token_required
 def add_album():
     # TODO kinda confused on this one
@@ -357,7 +362,7 @@ def add_album():
     payload = flask.request.get_json()
 
 
-@app.route("/playlist/", methods=['POST'])
+@app.route("/playlists/", methods=['POST'])
 #@token_required
 def create_playlist():
     logger.info('POST /playlist/')
@@ -365,14 +370,14 @@ def create_playlist():
     conn = db_connection()
     cur = conn.cursor()
 
-    logger.debug(f'POST /song - payload: {payload}')
+    logger.debug(f'POST /songs - payload: {payload}')
 
     if 'name' not in payload:
         response = {'status': StatusCodes['api_error'], 'results': 'ismn value not in payload'}
         return flask.jsonify(response)
 
     # FIXME list of tracks to add to playlist
-    statement = 'INSERT INTO playlist (id, name, visibility, consumer_userr)' \
+    statement = 'INSERT INTO playlists (id, name, visibility, consumer_userr)' \
                 'values (%d, %s, %s, %s)'
     values = (random.randint(0, 1000), payload['name'], payload['visibility'], payload['consumer_userr'])
 
@@ -394,7 +399,7 @@ def create_playlist():
     return flask.jsonify(response)
 
 
-@app.route("/stream/<ismn>", methods=['POST']) # FIXME not sure se o address está correto
+@app.route("/streams/<ismn>", methods=['POST']) # FIXME not sure se o address está correto
 #@token_required # TODO Tem de estar logado ig
 def play_song(ismn):
     logger.info('POST /stream/')
@@ -411,7 +416,7 @@ def play_song(ismn):
 
     # FIXME isto com ints e assim está a confundir-me um pouco, no meu do ano passado temos tudo como %s
     # TODO acho que as datas assim devem funcionar
-    statement = 'INSERT INTO stream (ismn, stream_date, consumer_userr)' \
+    statement = 'INSERT INTO streams (ismn, stream_date, consumer_userr)' \
                 'values (%d, %s, %s)'
     values = (int(payload['ismn']), datetime.date.today().isoformat(), payload['consumer_userr'])
 
@@ -431,3 +436,7 @@ def play_song(ismn):
             conn.close()
 
     return flask.jsonify(response)
+
+if __name__ == '__main__':
+    logger.info(f'API online: {host}:{port}')
+    app.run(host = host, threaded = True, port = port)
