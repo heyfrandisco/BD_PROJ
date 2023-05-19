@@ -64,13 +64,15 @@ if __name__ == "__main__":
             )
             INSERT INTO administrators (users_id)
             SELECT id FROM inserted_user
+            RETURNING users_id
             """
     values = (username, password, email, birthday)
 
     try:
         cur.execute(statement, values)
         conn.commit()
-        print(f"Admin {username} added!")
+        admin_id = cur.fetchone()[0]
+        print(f"Admin added with ID {admin_id}!")
     except psycopg2.errors.UniqueViolation:
         conn.rollback()
         print("Email or username already in use!")

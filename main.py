@@ -43,8 +43,10 @@ def requires_token(restrict):
             # Check if user has acess to the endpoint, must be in the restrict table passed as argument
             user_id = token_info["user_id"]
 
-            if restrict == "consumers":
+            if restrict == "consumers_regular":
                 statement = "SELECT EXISTS(SELECT 1 FROM consumers WHERE users_id = %s)"
+            elif restrict == "consumers_premium":
+                statement = "SELECT EXISTS(SELECT 1 FROM subscriptions WHERE consumers_users_id = %s AND end_date >= CURRENT_DATE)"
             elif restrict == "artists":
                 statement = "SELECT EXISTS(SELECT 1 FROM artists WHERE users_id = %s)"
             elif restrict == "administrators":
@@ -65,7 +67,7 @@ def requires_token(restrict):
                 result = cur.fetchone()
                 permitted = result[0]
                 if not permitted:
-                    response = {"status": StatusCodes["bad_request"], "errors": "You lack permissions for this action!"}
+                    response = {"status": StatusCodes["bad_request"], "errors": "You lack the required role this action!"}
                     return flask.jsonify(response)
             except (Exception, psycopg2.DatabaseError) as error:
                 response = {"status": StatusCodes["internal_error"], "errors": str(error)}
@@ -97,7 +99,7 @@ def landing_page():
     </html>
     """
 
-@app.route("/dbproj/consumers", methods=["POST"])
+@app.route("/dbproj/consumer", methods=["POST"])
 def register_consumer():
     payload = flask.request.get_json()
 
@@ -176,7 +178,7 @@ def register_consumer():
 
     return flask.jsonify(response)
 
-@app.route("/dbproj/artists", methods=["POST"])
+@app.route("/dbproj/artist", methods=["POST"])
 @requires_token(restrict = "administrators")
 def register_artist():
     payload = flask.request.get_json()
@@ -194,6 +196,10 @@ def register_artist():
     password = payload["password"]
     email = payload["email"]
     birthday = payload["birthday"]
+    publisher = payload["publisher"]
+    # No need to validate token since it is already done by the decorator
+    token = flask.request.headers.get("JWT-Token")
+    admin_id = jwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])["user_id"]
 
     # Verify that the username meets the requirements
     if not re.match(r"^[a-zA-Z0-9_]+$", username):
@@ -223,11 +229,6 @@ def register_artist():
         response = {"status": StatusCodes["internal_error"], "errors": "Could not connect to the database!"}
         return flask.jsonify(response)
     cur = conn.cursor()
-
-    publisher = payload["publisher"]
-    # No need to validate token since it is already done by the decorator
-    token = flask.request.headers.get("JWT-Token")
-    admin_id = jwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])["user_id"]
 
     statement = """
                 WITH inserted_user AS
@@ -265,7 +266,7 @@ def register_artist():
 
     return flask.jsonify(response)
 
-@app.route("/dbproj/users/", methods = ["PUT"])
+@app.route("/dbproj/user/", methods = ["PUT"])
 def authenticate_user():
     payload = flask.request.get_json()
 
@@ -391,7 +392,6 @@ def add_song():
 
     return flask.jsonify(response)
 
-
 @app.route("/dbproj/albums/", methods=["POST"])
 @requires_token(restrict = "artists")
 def add_album():
@@ -402,39 +402,106 @@ def add_album():
     payload = flask.request.get_json()
 
 @app.route("/songs/<keyword>", methods=["GET"])
-@requires_token(restrict = "consumers")
+@requires_token(restrict = "consumers_regular")
 def get_song(keyword):
+
     conn = db_connect()
+    if conn is None:
+        response = {"status": StatusCodes["internal_error"], "errors": "Could not connect to the database!"}
+        return flask.jsonify(response)
     cur = conn.cursor()
 
-    cur.execute("SELECT ismn, title, genre from songs where ismn = %s or title = %s or genre = %s", (keyword, keyword, keyword))
+    statement = """
+                    SELECT songs.title, ARRAY_AGG(artists_users_id) AS artists, ARRAY_AGG(albums.id) AS albums
+                    FROM songs
+                    LEFT JOIN artists_songs ON songs.id = artists_songs.songs_id
+                    LEFT JOIN albums ON albums.id = (SELECT album_orders.albums_id FROM album_orders WHERE album_orders.songs_id = songs.id)
+                    WHERE songs.title LIKE CONCAT('%', %s, '%')
+                    GROUP BY songs.id
+                """
+    values = (keyword,)
 
-    rows = cur.fetchall()
+    try:
+        cur.execute(statement, values)
+        rows = cur.fetchall()
+        if not rows:
+            response = {"status": StatusCodes["not_found"], "message": "No songs found!"}
+        else:
+            results = []
+            for row in rows:
+                title = row[0]
+                artists = row[1]
+                albums = row[2]
+                result = {"title": title, "artists": artists, "albums": albums if albums is not None else []}
+                results.append(result)
+            response = {"status": StatusCodes["success"], "results": results}
+    except (Exception, psycopg2.DatabaseError) as error:
+        response = {"status": StatusCodes["internal_error"], "errors": str(error)}
 
-    payload = []
-    logger.debug("Songs:")
 
-    for row in rows:
-        content = {"ismn": int(row[0]), "title": row[1], "genre": row[2]}
-        payload.append(content)
-        logger.debug(row)
+    finally:
+        if conn is not None:
+            cur.close()
+            conn.close()
 
-    conn.close()
-
-    return flask.jsnofiy(payload)
+    return flask.jsonify(response)
 
 @app.route("/dbproj/artist_info/<artist_id>", methods=["GET"])
-@requires_token(restrict = "consumers")
+@requires_token(restrict = "consumers_regular")
 def get_artist(artist_id):
-    return "TODO"
+
+    conn = db_connect()
+    if conn is None:
+        response = {"status": StatusCodes["internal_error"], "errors": "Could not connect to the database!"}
+        return flask.jsonify(response)
+    cur = conn.cursor()
+
+    statement = """
+                SELECT a.title, s.id AS song_id, al.id AS album_id, p.id AS playlist_id
+                FROM artists AS ar
+                LEFT JOIN artists_songs AS ars ON ar.users_id = ars.artists_users_id
+                LEFT JOIN songs AS s ON ars.songs_id = s.id
+                LEFT JOIN albums AS al ON s.artists_users_id = al.artists_users_id
+                LEFT JOIN album_orders AS ao ON al.id = ao.albums_id
+                LEFT JOIN playlists AS p ON ao.songs_id = p.id
+                LEFT JOIN playlist_orders AS po ON s.id = po.songs_id AND p.id = po.playlists_id
+                WHERE ar.users_id = %s
+                """
+    values = (artist_id,)
+
+    try:
+        cur.execute(statement, values)
+        rows = cur.fetchall()
+        if not rows:
+            response = {"status": StatusCodes["not_found"],"errors": f"No artist found with this ID {artist_id}!"}
+        else:
+            artist_id, artist_name, song_ids, album_ids, playlist_ids = rows[0]
+            response = {
+                "status": StatusCodes["success"],
+                "results": {
+                    "name": artist_name,
+                    "songs": song_ids if song_ids is not None else [],
+                    "albums": album_ids if album_ids is not None else [],
+                    "playlists": playlist_ids if playlist_ids is not None else []
+                }
+            }
+    except (Exception, psycopg2.DatabaseError) as error:
+        response = {"status": StatusCodes["internal_error"], "errors": str(error)}
+
+    finally:
+        if conn is not None:
+            cur.close()
+            conn.close()
+
+    return flask.jsonify(response)
 
 @app.route("/dbproj/subcription", methods=["POST"])
-@requires_token(restrict = "consumers")
+@requires_token(restrict = "consumers_regular")
 def add_subscription():
     return "TODO"
 
 @app.route("/dbproj/playlists", methods=["POST"])
-@requires_token(restrict = "consumers")
+@requires_token(restrict = "consumers_premium")
 def add_playlist():
     logger.info("POST /playlist/")
     payload = flask.request.get_json()
@@ -467,9 +534,8 @@ def add_playlist():
 
     return flask.jsonify(response)
 
-
-@app.route("/dbproj/streams/<ismn>", methods=["PUT"]) # FIXME not sure se o address está correto
-@requires_token(restrict = "consumers")
+@app.route("/dbproj/streams/<ismn>", methods=["PUT"])
+@requires_token(restrict = "consumers_regular")
 def stream_song(ismn):
     logger.info("POST /stream/")
     payload = flask.request.get_json()
@@ -507,37 +573,32 @@ def stream_song(ismn):
     return flask.jsonify(response)
 
 @app.route("/dbproj/card", methods=["POST"])
-@requires_token(restrict = "consumers")
+@requires_token(restrict = "administrators")
 def add_card():
     payload = flask.request.get_json()
 
     # Verify that the number of fields is correct
-    required = {"ismn", "title", "genre", "duration", "release_date", "explicit"}
+    required = {"number", "credit"}
     received = set(payload.keys())
     difference = list(required.difference(received))
     if len(difference) > 0:
         response = {"status": StatusCodes["bad_request"], "errors": f"Missing or unexpected fields: {difference}"}
         return flask.jsonify(response)
 
+    number = payload["number"]
+    credit = payload["credit"]
+    expiration = datetime.date.today() + datetime.timedelta(days=365)
+    # No need to validate token since it is already done by the decorator
+    token = flask.request.headers.get("JWT-Token")
+    admin_id = jwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])["user_id"]
 
-
-@app.route("/dbproj/comments/<song_id>", methods=["POST"])
-@requires_token(restrict = "consumers")
-def add_comment(song_id):
-    return "TODO"
-
-@app.route("/dbproj/comments/<song_id>/<parent_comment_id>", methods=["POST"])
-@requires_token(restrict = "consumers")
-def add_comment_reply(song_id, parent_comment_id):
-    return "TODO"
-
-@app.route("/dbproj/report/topN/<year_month>", methods=["GET"])
-@requires_token(restrict = "consumers")
-def get_report(year_month):
-    try:
-        datetime.datetime.strptime(year_month, "%Y-%m")
-    except ValueError:
-        response = {"status": StatusCodes["bad_request"], "errors": "Invalid release date format! Expected: YYYY-MM"}
+    # Verify that the number is in the correct format
+    if not re.match(r"^[0-9]{16}$", number):
+        response = {"status": StatusCodes["bad_request"], "errors": "Invalid card number, must be a 16 digits integer!"}
+        return flask.jsonify(response)
+    # Verify that the credit is one of the possible options
+    if credit != "15" and credit != "25" and credit != "50":
+        response = {"status": StatusCodes["bad_request"], "errors": "Invalid credit value, must be 15, 25 or 50!"}
         return flask.jsonify(response)
 
     conn = db_connect()
@@ -547,11 +608,196 @@ def get_report(year_month):
     cur = conn.cursor()
 
     statement = """
-                SELECT
+                INSERT INTO prepaid_cards (number, credit, expiration, administrators_users_id)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
                 """
+    values = (number, credit, expiration, admin_id)
 
+    try:
+        cur.execute(statement, values)
+        conn.commit()
+        card_id = cur.fetchone()[0]
+        response = {"status": StatusCodes["success"], "results": f"Card added with ID {card_id}!"}
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        response = {"status": StatusCodes["bad_request"], "errors": f"Card with this number already in use!"}
+    except (Exception, psycopg2.DatabaseError) as error:
+        conn.rollback()
+        response = {"status": StatusCodes["internal_error"], "errors": str(error)}
 
+    finally:
+        if conn is not None:
+            cur.close()
+            conn.close()
 
+    return flask.jsonify(response)
+
+@app.route("/dbproj/comments/<song_id>", methods=["POST"])
+@requires_token(restrict = "consumers_regular")
+def add_comment(song_id):
+    # Verify that the song id is in the correct format
+    if not re.match(r"^[0-9]{1,18}$", song_id):
+        response = {"status": StatusCodes["bad_request"], "errors": "Invalid song ID, must be a 1 to 18 digits integer!"}
+        return flask.jsonify(response)
+
+    conn = db_connect()
+    if conn is None:
+        response = {"status": StatusCodes["internal_error"], "errors": "Could not connect to the database!"}
+        return flask.jsonify(response)
+    cur = conn.cursor()
+
+    # Assign the fields to variables
+    # Endpoint has no content field in this demo, add dummy text
+    content = "Look at my nice comment!"
+    # No need to validate token since it is already done by the decorator
+    token = flask.request.headers.get("JWT-Token")
+    user_id = jwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])["user_id"]
+
+    statement = """
+                INSERT INTO comments (content, post_date, comments_id, songs_id, consumers_users_id)
+                VALUES (%s, CURRENT_DATE, %s, %s, %s)
+                RETURNING id
+                """
+    values = (content, None, song_id, user_id)
+
+    try:
+        cur.execute(statement, values)
+        conn.commit()
+        comment_id = cur.fetchone()[0]
+        response = {"status": StatusCodes["success"], "results": f"Comment added with ID {comment_id}!"}
+    except (Exception, psycopg2.DatabaseError) as error:
+        conn.rollback()
+        response = {"status": StatusCodes["internal_error"], "errors": str(error)}
+    except psycopg2.errors.ForeignKeyViolation:
+        conn.rollback()
+        response = {"status": StatusCodes["bad_request"], "errors": f"No song with ID {song_id} found!"}
+
+    finally:
+        if conn is not None:
+            cur.close()
+            conn.close()
+
+    return flask.jsonify(response)
+
+@app.route("/dbproj/comments/<song_id>/<parent_comment_id>", methods=["POST"])
+@requires_token(restrict = "consumers_regular")
+def add_comment_reply(song_id, parent_comment_id):
+    # Verify that the song id is in the correct format
+    if not re.match(r"^[0-9]{1,18}$", song_id):
+        response = {"status": StatusCodes["bad_request"], "errors": "Invalid song ID, must be a 1 to 18 digits integer!"}
+        return flask.jsonify(response)
+    # Verify that the parent comment id is in the correct format
+    if not re.match(r"^[0-9]{1,18}$", parent_comment_id):
+        response = {"status": StatusCodes["bad_request"], "errors": "Invalid parent comment ID, must be a 1 to 18 digits integer!"}
+        return flask.jsonify(response)
+
+    conn = db_connect()
+    if conn is None:
+        response = {"status": StatusCodes["internal_error"], "errors": "Could not connect to the database!"}
+        return flask.jsonify(response)
+    cur = conn.cursor()
+
+    # Assign the fields to variables
+    # Endpoint has no content field in this demo, add dummy text
+    content = "Look at my nice comment!"
+    # No need to validate token since it is already done by the decorator
+    token = flask.request.headers.get("JWT-Token")
+    user_id = jwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])["user_id"]
+
+    statement = """
+                INSERT INTO comments (content, post_date, comments_id, songs_id, consumers_users_id)
+                VALUES (%s, CURRENT_DATE, %s, %s, %s)
+                RETURNING id
+                """
+    values = (content, parent_comment_id, song_id, user_id)
+
+    try:
+        cur.execute(statement, values)
+        conn.commit()
+        comment_id = cur.fetchone()[0]
+        response = {"status": StatusCodes["success"], "results": f"Comment added with ID {comment_id}!"}
+    except (Exception, psycopg2.DatabaseError) as error:
+        conn.rollback()
+        response = {"status": StatusCodes["internal_error"], "errors": str(error)}
+    except psycopg2.errors.ForeignKeyViolation:
+        conn.rollback()
+        response = {"status": StatusCodes["bad_request"], "errors": f"No song with ID {song_id} or comment with ID {parent_comment_id} found!"}
+
+    finally:
+        if conn is not None:
+            cur.close()
+            conn.close()
+
+    return flask.jsonify(response)
+
+@app.route("/dbproj/report/topN/<year_month>", methods=["GET"])
+@requires_token(restrict = "consumers_regular")
+def get_report(year_month):
+    # Verify that the year_month is in the correct format
+    try:
+        year_month = datetime.datetime.strptime(year_month, "%Y-%m")
+    except ValueError:
+        response = {"status": StatusCodes["bad_request"], "errors": "Invalid release date format! Expected: YYYY-MM"}
+        return flask.jsonify(response)
+
+    # Subtract 12 months from the date
+    year_month = year_month - datetime.timedelta(days=365)
+
+    # No need to validate token since it is already done by the decorator
+    token = flask.request.headers.get("JWT-Token")
+    consumer_id = jwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])["user_id"]
+
+    conn = db_connect()
+    if conn is None:
+        response = {"status": StatusCodes["internal_error"], "errors": "Could not connect to the database!"}
+        return flask.jsonify(response)
+    cur = conn.cursor()
+
+    statement = """
+                SELECT
+                    EXTRACT(YEAR_MONTH FROM songs.release_date) AS month,
+                    songs.genre,
+                    COUNT(*) AS playbacks
+                FROM
+                    streams
+                JOIN
+                    songs ON streams.songs_id = songs.id
+                WHERE
+                    streams.consumers_users_id = %s
+                    AND streams.stream_date >= %s
+                GROUP BY
+                    month,
+                    songs.genre
+                ORDER BY
+                    month DESC,
+                    playbacks DESC;
+                """
+    values = (consumer_id, year_month)
+
+    try:
+        cur.execute(statement, values)
+        rows = cur.fetchall()
+        results = []
+        for row in rows:
+            month = row[0]
+            genre = row[1]
+            playbacks = row[2]
+            result = {"month": month, "genre": genre, "playbacks": playbacks}
+            results.append(result)
+        if results == []:
+            response = {"status": StatusCodes["success"], "results": "No stream history!"}
+        else:
+            response = {"status": StatusCodes["success"], "results": results}
+    except (Exception, psycopg2.DatabaseError) as error:
+        response = {"status": StatusCodes["internal_error"], "errors": str(error)}
+
+    finally:
+        if conn is not None:
+            cur.close()
+            conn.close()
+
+    return flask.jsonify(response)
 
 # Extra endpoints
 @app.route("/dbproj/publishers", methods=["POST"])
@@ -592,7 +838,8 @@ def add_publisher():
     try:
         cur.execute(statement, values)
         conn.commit()
-        response = {"status": StatusCodes["success"], "results": f"Publisher {name} added!"}
+        publisher_id = cur.fetchone()[0]
+        response = {"status": StatusCodes["success"], "results": f"Publisher added with ID {publisher_id}!"}
     except psycopg2.errors.UniqueViolation:
         conn.rollback()
         response = {"status": StatusCodes["bad_request"], "errors": f"Email already in use!"}
