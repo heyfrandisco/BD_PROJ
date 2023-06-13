@@ -283,7 +283,7 @@ def authenticate_user():
                                 AND (bans.end_time IS NULL or bans.end_time > CURRENT_TIMESTAMP)) THEN true
                         END AS banned
                     FROM users
-                    WHERE username = %s OR email = %s
+                    WHERE username = %s OR email ILIKE %s
                     """
         values = (username_or_email, username_or_email)
         cur.execute(statement, values)
@@ -351,7 +351,6 @@ def add_song(user_id, user_role):
     explicit = payload["explicit"]
     collaborator_list = payload["collaborator_list"]
 
-    # Verify fields
     if not utils.string_validate(ismn, min_len = 13, max_len = 13, only_digits = True):
         flask.abort(utils.StatusCodes["bad_request"], "Invalid ISMN! Expected string of digits with length: 13")
     if not utils.string_validate(title, max_len = 512):
@@ -432,7 +431,7 @@ def add_album(user_id, user_role):
     if not utils.datetime_validate(release_date, "%Y-%m-%d", past = True):
         flask.abort(utils.StatusCodes["bad_request"], "Invalid release date! Expected past date string in ISO 8601 format: YYYY-MM-DD")
     if not len(new_song_list) + len(existing_song_list) in range(2, 10001):
-        flask.abort(utils.StatusCodes["bad_request"], "Invalid length for song lists! Expected combined length in range: 2 to 10000")
+        flask.abort(utils.StatusCodes["bad_request"], "Invalid album length for new and existing song lists! Expected combined length in range: 2 to 10000")
     if not utils.list_validate(existing_song_list, min_len = 0, max_len = 10000):
         flask.abort(utils.StatusCodes["bad_request"], "Invalid existing song list! Expected list in format [1, 2, ...] with length: 0 to 10000")
     for song_id in existing_song_list:
@@ -441,9 +440,33 @@ def add_album(user_id, user_role):
     if not utils.list_validate(new_song_list, min_len = 0, max_len = 10000):
         flask.abort(utils.StatusCodes["bad_request"], "Invalid new song list! Expected list in format [1, 2, ...] with length: 0 to 10000")
     for song in new_song_list:
-        song = song.strip()
-        pass #TODO
+        ismn = song[0]
+        title = song[1]
+        genre = song[2]
+        duration = song[3]
+        release_date = song[4]
+        explicit = song[5]
+        collaborator_list = song[6]
 
+        if not utils.string_validate(ismn, min_len = 13, max_len = 13, only_digits = True):
+            flask.abort(utils.StatusCodes["bad_request"], "Invalid ISMN! Expected string of digits with length: 13")
+        if not utils.string_validate(title, max_len = 512):
+            flask.abort(utils.StatusCodes["bad_request"], "Invalid title! Expected string with length: 1 to 512")
+        if not utils.string_validate(genre, max_len = 512):
+            flask.abort(utils.StatusCodes["bad_request"], "Invalid genre! Expected string with length: 1 to 512")
+        if not utils.integer_validate(duration, min_val = 1, max_val = 3600):
+            flask.abort(utils.StatusCodes["bad_request"], "Invalid duration! Expected integer with value: 1 to 3600")
+        if not utils.datetime_validate(release_date, "%Y-%m-%d", past = True):
+            flask.abort(utils.StatusCodes["bad_request"], "Invalid release date! Expected past date string in ISO 8601 format: YYYY-MM-DD")
+        if not utils.boolean_validate(explicit):
+            flask.abort(utils.StatusCodes["bad_request"], "Invalid explicit value! Expected boolean with value: true or false!")
+        if not utils.list_validate(collaborator_list, max_len = 10):
+            flask.abort(utils.StatusCodes["bad_request"], "Invalid collaborator list! Expected array of integers with length: 0 to 10")
+        for collaborator_id in collaborator_list:
+            if not utils.integer_validate(collaborator_id, min_val = 1, max_val = 9223372036854775807):
+                flask.abort(utils.StatusCodes["bad_request"], "Invalid collaborator ID in list! Expected integers with values: 1 to 9223372036854775807")
+            if collaborator_id == artist_id:
+                flask.abort(utils.StatusCodes["bad_request"], "Cannot add yourself as a collaborator!")
 
     try:
         conn, cur = utils.db_connect()
@@ -479,7 +502,7 @@ def add_album(user_id, user_role):
     except psycopg2.errors.ForeignKeyViolation:
         flask.abort(utils.StatusCodes["bad_request"], "No song was found with one of the IDs in the song list!")
     except psycopg2.errors.UniqueViolation:
-        flask.abort(utils.StatusCodes["bad_request"], "You already have an album with this exact title!")
+        flask.abort(utils.StatusCodes["bad_request"], "You already have an album/song with this exact title or one of the new song's ISMN already exists!")
     except Exception:
         flask.abort(utils.StatusCodes["internal_error"], "Database failed to execute query!")
     finally:
@@ -1528,16 +1551,54 @@ def delete_comment_thread(user_id, user_role, starting_comment_id):
 @app.route("/dbproj/top10", methods=["GET"])
 @requires_authentication(restrict = ["consumer"])
 def get_my_top10(user_id, user_role):
-    flask.abort(utils.StatusCodes["not_implemented"], "This endpoint is not implemented yet!")
-
-@app.route("/dbproj/subscription", methods=["GET"])
-@requires_authentication(restrict = ["consumer"])
-def get_my_subscription(user_id, user_role):
     consumer_id = user_id
 
     try:
         conn, cur = utils.db_connect()
 
+        statement = """
+                    SELECT last_updated, top_10_orders.position, top_10_orders.stream_count, songs.title, artists.stage_name
+                    FROM top_10s
+                    LEFT JOIN top_10_orders ON top_10_orders.top_10s_consumers_users_id = top_10s.consumers_users_id
+                    LEFT JOIN songs ON songs.id = top_10_orders.songs_id
+                    LEFT JOIN artists ON artists.users_id = songs.artists_users_id
+                    WHERE top_10s.consumers_users_id = %s
+                    ORDER BY top_10_orders.position ASC
+                    """
+        values = (consumer_id,)
+        cur.execute(statement, values)
+
+        rows = cur.fetchall()
+        if not rows:
+            response = {"results": "You have not listened to enough distinct songs to have a top 10!"}
+        else:
+            last_updated = rows[0][0]
+            top_10 = []
+            for row in rows:
+                top_10.append({"position": row[1], "stream_count": row[2], "title": row[3], "artist": row[4]})
+            response = {"results":
+                            {
+                                "top_10": top_10,
+                                "last_updated": last_updated
+                            }
+                        }
+
+    except werkzeug.exceptions.HTTPException:
+        raise
+    except Exception:
+        flask.abort(utils.StatusCodes["internal_error"], "Database failed to execute query!")
+    finally:
+        utils.db_disconnect(conn, cur)
+
+    return flask.make_response(flask.jsonify(response), utils.StatusCodes["success"])
+
+@app.route("/dbproj/subscription_info", methods=["GET"])
+@requires_authentication(restrict = ["consumer"])
+def get_my_subscription_info(user_id, user_role):
+    consumer_id = user_id
+
+    try:
+        conn, cur = utils.db_connect()
 
         statement = """
                     SELECT id, start_time, end_time
@@ -1555,7 +1616,7 @@ def get_my_subscription(user_id, user_role):
             results = []
             for row in rows:
                 results.append({"subscription_id": row[0], "start_time": row[1], "end_time": row[2]})
-            response = {"results": results}
+            response = {"results": {"acquired_subscriptions": results}}
 
     except werkzeug.exceptions.HTTPException:
         raise
