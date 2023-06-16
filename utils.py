@@ -9,7 +9,7 @@ StatusCodes = {
                 "bad_request": 400,
                 "unauthorized": 401,
                 "forbidden": 403,
-                "page_not_found": 404,
+                "not_found": 404,
                 "method_not_allowed": 405,
                 "too_many_requests": 429,
                 "internal_error": 500,
@@ -31,7 +31,7 @@ def db_connect():
 
 def db_disconnect(conn, cur):
     if conn:
-        # Always rollback changes before disconnecting, if they are already committed or there is no transaction this will do nothing
+        # Always rollback changes before disconnecting, if they are already committed or there is no transaction pending this will do nothing
         conn.rollback()
         cur.close()
         conn.close()
@@ -73,11 +73,13 @@ def boolean_validate(boolean):
         return True
     return False
 
-def list_validate(array, min_len = None, max_len = None):
+def list_validate(array, min_len = None, max_len = None, no_duplicates = False):
     if isinstance(array, list):
         if min_len is not None and len(array) < min_len:
             return False
         if max_len is not None and len(array) > max_len:
+            return False
+        if no_duplicates and len(set(array)) != len(array):
             return False
         return True
     return False

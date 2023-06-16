@@ -17,8 +17,8 @@ app = flask.Flask(__name__)
 limiter = flask_limiter.Limiter(flask_limiter.util.get_remote_address, app = app, default_limits = ["500/hour","3/second"])
 
 def requires_authentication(restrict = None):
-    def decorator(func):
-        @functools.wraps(func)
+    def decorator(function):
+        @functools.wraps(function)
         def wrapper(*args, **kwargs):
             auth = flask.request.headers.get("Authorization")
 
@@ -76,10 +76,10 @@ def requires_authentication(restrict = None):
                 for role in restrict:
                     # If the user role is in the restrict list, allow entry to the endpoint (premium consumers can access regular consumer endpoints)
                     if user_role == role or (user_role == "premium consumer" and role == "consumer"):
-                        return func(user_id, user_role, *args, **kwargs)
+                        return function(user_id, user_role, *args, **kwargs)
                 flask.abort(utils.StatusCodes["unauthorized"], "You do not have permission to perform this action!")
 
-            return func(user_id, user_role, *args, **kwargs)
+            return function(user_id, user_role, *args, **kwargs)
         return wrapper
     return decorator
 
@@ -88,12 +88,6 @@ def requires_authentication(restrict = None):
 def landing_page():
     response = {"results": "Welcome to our API, please refer to the documentation for information on how to use the endpoints!"}
     return flask.make_response(flask.jsonify(response), utils.StatusCodes["success"])
-
-# Serve favicon to clients that request it (e.g. browsers)
-@app.route("/favicon.ico", methods=["GET"])
-@limiter.exempt
-def favicon():
-    return flask.send_from_directory(os.path.join(app.root_path, "res"), "favicon.ico", mimetype="image/vnd.microsoft.icon")
 
 @app.route("/dbproj/consumer", methods=["POST"])
 # Prevent spam account creation with stricter rate limiting
@@ -263,7 +257,6 @@ def authenticate_user():
     username_or_email = payload["username_or_email"]
     password = payload["password"]
 
-    # Verify fields
     if not utils.string_validate(username_or_email, max_len = 512):
         flask.abort(utils.StatusCodes["bad_request"], "Invalid username or email! Expected string with length: 1 to 512")
     if not utils.string_validate(password, max_len = 512):
@@ -321,7 +314,7 @@ def authenticate_user():
 
         login_id = cur.fetchone()[0]
         if not login_id:
-            raise Exception
+            raise psycopg2.DatabaseError
 
         conn.commit()
 
@@ -358,16 +351,18 @@ def add_song(user_id, user_role):
     if not utils.string_validate(genre, max_len = 512):
         flask.abort(utils.StatusCodes["bad_request"], "Invalid genre! Expected string with length: 1 to 512")
     if not utils.integer_validate(duration, min_val = 1, max_val = 3600):
-        flask.abort(utils.StatusCodes["bad_request"], "Invalid duration! Expected integer with value: 1 to 3600")
+        flask.abort(utils.StatusCodes["bad_request"], "Invalid duration! Expected integer in range: 1 to 3600")
     if not utils.datetime_validate(release_date, "%Y-%m-%d", past = True):
         flask.abort(utils.StatusCodes["bad_request"], "Invalid release date! Expected past date string in ISO 8601 format: YYYY-MM-DD")
     if not utils.boolean_validate(explicit):
         flask.abort(utils.StatusCodes["bad_request"], "Invalid explicit value! Expected boolean with value: true or false!")
-    if not utils.list_validate(collaborator_list, max_len = 10):
-        flask.abort(utils.StatusCodes["bad_request"], "Invalid collaborator list! Expected array of integers with length: 0 to 10")
+    if not utils.list_validate(collaborator_list, max_len = 10, no_duplicates = True):
+        flask.abort(utils.StatusCodes["bad_request"],
+        "Invalid collaborator list! Expected array of integers with no duplicates, empty or with max length: 10")
     for collaborator_id in collaborator_list:
         if not utils.integer_validate(collaborator_id, min_val = 1, max_val = 9223372036854775807):
-            flask.abort(utils.StatusCodes["bad_request"], "Invalid collaborator ID in list! Expected integers with values: 1 to 9223372036854775807")
+            flask.abort(utils.StatusCodes["bad_request"],
+            "Invalid collaborator ID in list! Expected integers with values in range: 1 to 9223372036854775807")
         if collaborator_id == artist_id:
             flask.abort(utils.StatusCodes["bad_request"], "Cannot add yourself as a collaborator!")
 
@@ -432,14 +427,19 @@ def add_album(user_id, user_role):
         flask.abort(utils.StatusCodes["bad_request"], "Invalid release date! Expected past date string in ISO 8601 format: YYYY-MM-DD")
     if not len(new_song_list) + len(existing_song_list) in range(2, 10001):
         flask.abort(utils.StatusCodes["bad_request"], "Invalid album length for new and existing song lists! Expected combined length in range: 2 to 10000")
-    if not utils.list_validate(existing_song_list, min_len = 0, max_len = 10000):
-        flask.abort(utils.StatusCodes["bad_request"], "Invalid existing song list! Expected list in format [1, 2, ...] with length: 0 to 10000")
+    if not utils.list_validate(existing_song_list, max_len = 10000, no_duplicates = True):
+        flask.abort(utils.StatusCodes["bad_request"],
+        "Invalid existing song list! Expected array of integers with no duplicates, empty or with max length: 10000")
     for song_id in existing_song_list:
         if not utils.integer_validate(song_id, min_val = 1, max_val = 9223372036854775807):
-            flask.abort(utils.StatusCodes["bad_request"], "Invalid song ID in the song list! Expected integer in range: 1 to 9223372036854775807")
-    if not utils.list_validate(new_song_list, min_len = 0, max_len = 10000):
-        flask.abort(utils.StatusCodes["bad_request"], "Invalid new song list! Expected list in format [1, 2, ...] with length: 0 to 10000")
+            flask.abort(utils.StatusCodes["bad_request"], "Invalid song ID in the song list! Expected integers in range: 1 to 9223372036854775807")
+    if not utils.list_validate(new_song_list, max_len = 10000, no_duplicates = True):
+        flask.abort(utils.StatusCodes["bad_request"], "Invalid new song list! Expected array with no duplicates, empty or with max length: 10000")
     for song in new_song_list:
+        if not len(song) == 7:
+            flask.abort(utils.StatusCodes["bad_request"],
+            "Invalid new song info! Expected arrays with length: 7 (ismn, title, genre, duration, release_date, explicit, collaborator_list)")
+
         ismn = song[0]
         title = song[1]
         genre = song[2]
@@ -449,27 +449,67 @@ def add_album(user_id, user_role):
         collaborator_list = song[6]
 
         if not utils.string_validate(ismn, min_len = 13, max_len = 13, only_digits = True):
-            flask.abort(utils.StatusCodes["bad_request"], "Invalid ISMN! Expected string of digits with length: 13")
+            flask.abort(utils.StatusCodes["bad_request"], "Invalid new song ISMN! Expected string of digits with length: 13")
         if not utils.string_validate(title, max_len = 512):
-            flask.abort(utils.StatusCodes["bad_request"], "Invalid title! Expected string with length: 1 to 512")
+            flask.abort(utils.StatusCodes["bad_request"], "Invalid new song title! Expected string with length: 1 to 512")
         if not utils.string_validate(genre, max_len = 512):
-            flask.abort(utils.StatusCodes["bad_request"], "Invalid genre! Expected string with length: 1 to 512")
+            flask.abort(utils.StatusCodes["bad_request"], "Invalid new song genre! Expected string with length: 1 to 512")
         if not utils.integer_validate(duration, min_val = 1, max_val = 3600):
-            flask.abort(utils.StatusCodes["bad_request"], "Invalid duration! Expected integer with value: 1 to 3600")
+            flask.abort(utils.StatusCodes["bad_request"], "Invalid new song duration! Expected integer in range: 1 to 3600")
         if not utils.datetime_validate(release_date, "%Y-%m-%d", past = True):
-            flask.abort(utils.StatusCodes["bad_request"], "Invalid release date! Expected past date string in ISO 8601 format: YYYY-MM-DD")
+            flask.abort(utils.StatusCodes["bad_request"], "Invalid new song release date! Expected past date string in ISO 8601 format: YYYY-MM-DD")
         if not utils.boolean_validate(explicit):
-            flask.abort(utils.StatusCodes["bad_request"], "Invalid explicit value! Expected boolean with value: true or false!")
-        if not utils.list_validate(collaborator_list, max_len = 10):
-            flask.abort(utils.StatusCodes["bad_request"], "Invalid collaborator list! Expected array of integers with length: 0 to 10")
+            flask.abort(utils.StatusCodes["bad_request"], "Invalid new song explicit value! Expected boolean with value: true or false!")
+        if not utils.list_validate(collaborator_list, max_len = 10, no_duplicates = True):
+            flask.abort(utils.StatusCodes["bad_request"],
+            "Invalid new song collaborator list! Expected array of integers with no duplicates, empty or with max length: 10")
         for collaborator_id in collaborator_list:
             if not utils.integer_validate(collaborator_id, min_val = 1, max_val = 9223372036854775807):
-                flask.abort(utils.StatusCodes["bad_request"], "Invalid collaborator ID in list! Expected integers with values: 1 to 9223372036854775807")
+                flask.abort(utils.StatusCodes["bad_request"],
+                "Invalid new song collaborator ID in list! Expected integers in range: 1 to 9223372036854775807")
             if collaborator_id == artist_id:
-                flask.abort(utils.StatusCodes["bad_request"], "Cannot add yourself as a collaborator!")
+                flask.abort(utils.StatusCodes["bad_request"], "Cannot add yourself as a collaborator in one of the new songs!")
 
     try:
         conn, cur = utils.db_connect()
+
+        if len(existing_song_list) > 0:
+            # Check if existing songs given are of the artist's authorship
+            statement = """
+                        SELECT songs.id
+                        FROM songs
+                        WHERE songs.id = ANY(%s::int[]) AND songs.artists_users_id != %s;
+                        """
+            values = (existing_song_list, artist_id)
+            cur.execute(statement, values)
+
+            if cur.fetchone():
+                flask.abort(utils.StatusCodes["bad_request"], "Cannot create album with one or more existing songs that are not of your authorship!")
+
+        if len(new_song_list) > 0:
+            # Insert new songs
+            for song in new_song_list:
+                statement = """
+                            WITH inserted_song AS
+                            (
+                                INSERT INTO songs (ismn, title, genre, duration, release_date, explicit, artists_users_id, publishers_id)
+                                SELECT %s, %s, %s, %s, %s, %s, %s, publishers_id
+                                FROM artists WHERE users_id = %s
+                                RETURNING id
+                            ),
+                            inserted_collab AS
+                            (
+                                INSERT INTO collaborations (artists_users_id, songs_id)
+                                SELECT collaborator_id, inserted_song.id
+                                FROM inserted_song, UNNEST(%s::int[]) AS collaborator_id
+                            )
+                            SELECT id FROM inserted_song;
+                            """
+                values = (song[0], song[1], song[2], song[3], song[4], song[5], artist_id, artist_id, song[6])
+                cur.execute(statement, values)
+
+                inserted_song_id = cur.fetchone()[0]
+                existing_song_list.append(inserted_song_id)
 
         # Use ordinality to preserve the song order given by the user in the array
         statement = """
@@ -491,8 +531,6 @@ def add_album(user_id, user_role):
         cur.execute(statement, values)
 
         album_id = cur.fetchone()[0]
-        if not album_id:
-            raise psycopg2.DatabaseError
 
         conn.commit()
         response = {"results": f"Album added with ID {album_id}!"}
@@ -500,7 +538,7 @@ def add_album(user_id, user_role):
     except werkzeug.exceptions.HTTPException:
         raise
     except psycopg2.errors.ForeignKeyViolation:
-        flask.abort(utils.StatusCodes["bad_request"], "No song was found with one of the IDs in the song list!")
+        flask.abort(utils.StatusCodes["bad_request"], "No song was found with one of the IDs in the existing song list!")
     except psycopg2.errors.UniqueViolation:
         flask.abort(utils.StatusCodes["bad_request"], "You already have an album/song with this exact title or one of the new song's ISMN already exists!")
     except Exception:
@@ -743,7 +781,7 @@ def get_song_info(user_id, user_role, song_id):
 
     statement = """
                 SELECT songs.title, artists.stage_name, songs.genre, songs.duration,
-                songs.explicit, songs.release_date, collaborators.stage_name, albums.title
+                songs.explicit, songs.release_date, albums.title, ARRAY_AGG(collaborators.stage_name)
                 FROM songs
                 LEFT JOIN artists ON songs.artists_users_id = artists.users_id
                 LEFT JOIN album_orders ON album_orders.songs_id = songs.id
@@ -751,34 +789,28 @@ def get_song_info(user_id, user_role, song_id):
                 LEFT JOIN collaborations ON songs.id = collaborations.songs_id
                 LEFT JOIN artists AS collaborators ON collaborations.artists_users_id = collaborators.users_id
                 WHERE songs.id = %s
-                GROUP BY songs.id, artists.stage_name, collaborators.stage_name, albums.title
+                GROUP BY songs.title, artists.stage_name, songs.genre, songs.duration, songs.explicit, songs.release_date, albums.title
                 """
     values = (song_id,)
 
     try:
         cur.execute(statement, values)
-        rows = cur.fetchall()
-        if not rows:
+        song = cur.fetchone()
+        if not song:
             response = {"results": f"No song found with ID {song_id}!"}
         else:
-            title, artist_name, genre, duration, explicit, release_date = rows[0][:6]
+            title, artist_name, genre, duration, explicit, release_date, album_name = song[0:7]
             minutes = duration // 60
             seconds = duration % 60
             duration = f"{minutes}:{seconds}"
             release_date = release_date.strftime("%Y-%m-%d")
-            collab_names = []
-            album_names = []
-            for row in rows:
-                if row[6]:
-                    collab_names.append(row[6])
-                if row[7]:
-                    album_names.append(row[7])
+            collab_names = [collab_name for collab_name in song[7] if collab_name]
             response = {"results":
                             {
                                 "title": title,
-                                "artist": artist_name,
-                                "collaborators": collab_names if collab_names else ["This song was made with no collaborations!"],
-                                "albums": album_names if album_names else ["This song is a single!"],
+                                "artist_name": artist_name,
+                                "collaborators_name": collab_names if collab_names else None,
+                                "album_name": album_name if album_name else None,
                                 "genre": genre,
                                 "duration": duration,
                                 "explicit": explicit,
@@ -802,7 +834,7 @@ def get_artist_info(user_id, user_role, artist_id):
     conn, cur = utils.db_connect()
 
     statement = """
-                SELECT DISTINCT artists.stage_name, songs.title, collabs.title, albums.title, playlists.name, playlists_author.display_name
+                SELECT artists.stage_name, ARRAY_AGG(DISTINCT songs.title), ARRAY_AGG(DISTINCT collabs.title), ARRAY_AGG(DISTINCT albums.title), ARRAY_AGG(DISTINCT playlists.name), ARRAY_AGG(DISTINCT playlists_author.display_name)
                 FROM artists
                 JOIN users ON artists.users_id = users.id
                 LEFT JOIN collaborations ON artists.users_id = collaborations.artists_users_id
@@ -813,38 +845,28 @@ def get_artist_info(user_id, user_role, artist_id):
                 LEFT JOIN playlists ON playlist_orders.playlists_id = playlists.id AND playlists.private = FALSE
                 LEFT JOIN consumers AS playlists_author ON playlists.consumers_users_id = playlists_author.users_id
                 WHERE artists.users_id = %s
+				GROUP BY artists.stage_name
                 """
     values = (artist_id,)
 
     try:
         cur.execute(statement, values)
-        rows = cur.fetchall()
-        if not rows:
+        row = cur.fetchone()
+        if not row:
             response = {"results": f"No artist found with ID {artist_id}!"}
         else:
-            stage_name = rows[0][0]
-            songs = []
-            collabs = []
-            albums = []
-            playlists = []
-            for row in rows:
-                if row[1] and row[1] not in songs:
-                    songs.append(row[1])
-                if row[2]:
-                    collabs.append(row[2])
-                if row[3]:
-                    albums.append(row[3])
-                if row[4] and row[5]:
-                    playlist = {"name": row[4], "author": row[5]}
-                    if playlist not in playlists:
-                        playlists.append(playlist)
+            stage_name = row[0]
+            songs = [song for song in row[1] if song]
+            collabs = [collab for collab in row[2] if collab]
+            albums = [album for album in row[3] if album]
+            playlists = [{"playlist": playlist, "author": author} for playlist, author in zip(row[4], row[5]) if playlist and author]
             response = {"results":
                             {
                                 "stage_name": stage_name,
-                                "released_songs": songs if songs else ["This artist has not released any songs!"],
-                                "featured_songs": collabs if collabs else ["This artist has not been featured in any songs from other artists!"],
-                                "albums": albums if albums else ["This artist has not released any albums!"],
-                                "is_in_playlists": playlists if playlists else ["This artist's songs have not been added to any public playlists!"]
+                                "released_songs": songs if songs else None,
+                                "featured_songs": collabs if collabs else None,
+                                "albums": albums if albums else None,
+                                "is_in_public_playlists": playlists if playlists else None,
                             }
                         }
     except psycopg2.DatabaseError as e:
@@ -1143,9 +1165,14 @@ def delete_playlist(user_id, user_role, playlist_id):
 
     statement = """
                 DELETE FROM playlists
-                WHERE id = %s AND consumers_users_id = %s
-                RETURNING id
+                WHERE id = %s AND consumers_users_id = %s AND (private = FALSE
                 """
+    # Add extra condition to allow interaction with private playlists if user is a premium consumer
+    if user_role == "premium consumer":
+        statement += "OR playlists.private = TRUE)"
+    else:
+        statement += ")"
+    statement += "RETURNING id"
     values = (playlist_id, consumer_id)
 
     try:
@@ -1153,7 +1180,11 @@ def delete_playlist(user_id, user_role, playlist_id):
         rows = cur.fetchone()
         conn.commit()
         if not rows:
-            flask.abort(utils.StatusCodes["not_found"], f"No playlist of your authorship found with ID {playlist_id}!")
+            if user_role == "premium consumer":
+                response = {"results": f"No playlist of your authorship found with ID {playlist_id}!"}
+            else:
+                response = {"results":
+                f"No playlist of your authorship found with ID {playlist_id}, remember that your private playlists are only avaliable with premium!"}
         else:
             response = {"results": f"Playlist deleted with ID {playlist_id}!"}
     except psycopg2.DatabaseError:
@@ -1183,7 +1214,8 @@ def ban_user(user_id, user_role):
     if not utils.string_validate(reason, max_len = 512):
         flask.abort(utils.StatusCodes["bad_request"], "Invalid reason! Expected string with length: 1 to 512")
     if end_time is not None and not utils.datetime_validate(end_time, "%Y-%m-%dT%H:%M:%S", future = True):
-        flask.abort(utils.StatusCodes["bad_request"], "Invalid end time! Expected null or future time string in ISO 8601 format: YYYY-MM-DDTHH:MM:SS")
+        flask.abort(utils.StatusCodes["bad_request"],
+        "Invalid end time! Expected null (permanent) or future time string in ISO 8601 format: YYYY-MM-DDTHH:MM:SS")
 
     try:
         conn, cur = utils.db_connect()
@@ -1251,7 +1283,7 @@ def unban_user(request_user_id, request_user_role, user_id):
 
         row = cur.fetchone()
         if not row:
-            flask.abort(utils.StatusCodes["not_found"], f"No active ban found for user with ID {user_id}!")
+            response = {"results": f"No active ban found for user with ID {user_id}!"}
         else:
             response = {"results": f"User with ID {row[0]} unbanned!"}
 
@@ -1269,37 +1301,35 @@ def unban_user(request_user_id, request_user_role, user_id):
 @app.route("/dbproj/comment/<song_id>", methods=["GET"])
 @requires_authentication(restrict = ["consumer", "administrator"])
 def get_song_comments(user_id, user_role, song_id):
-    # Verify that the song id is valid
-    try:
-        song_id = int(song_id)
-        if song_id < 1 or song_id > 9223372036854775807:
-            raise ValueError
-    except ValueError:
-        flask.abort(utils.StatusCodes["bad_request"], "Invalid song ID!")
-
-    conn, cur = utils.db_connect()
-
-    statement = """
-                SELECT id
-                FROM comments
-                WHERE songs_id = %s AND comments_id IS NULL
-                ORDER BY id ASC;
-                """
-    values = (song_id,)
+    if not utils.integer_validate(utils.string_to_int(song_id), min_val = 1, max_val = 9223372036854775807):
+        flask.abort(utils.StatusCodes["bad_request"], "Invalid song ID! Expected integer in range: 1 to 9223372036854775807")
 
     try:
+        conn, cur = utils.db_connect()
+
+        statement = """
+                    SELECT ARRAY_AGG(id)
+                    FROM comments
+                    WHERE songs_id = %s AND comments_id IS NULL
+                    """
+        values = (song_id,)
         cur.execute(statement, values)
-        rows = cur.fetchall()
-        if not rows:
+
+        row = cur.fetchone()
+        if not row:
             response = {"results": f"Song with ID {song_id} has no comments!"}
         else:
-            results = []
-            for row in rows:
-                results.append({"comment_id": row[0]})
-            response = {"results": results}
+            comment_ids = [comment_id for comment_id in row if comment_id]
+            response = {"results":
+                            {
+                                "comments_id": comment_ids if comment_ids else None,
+                            }
+                        }
+
+    except werkzeug.exceptions.HTTPException:
+        raise
     except psycopg2.DatabaseError:
         flask.abort(utils.StatusCodes["internal_error"], "Database failed to execute query!")
-
     finally:
         utils.db_disconnect(conn, cur)
 
@@ -1308,47 +1338,42 @@ def get_song_comments(user_id, user_role, song_id):
 @app.route("/dbproj/comment_info/<comment_id>", methods=["GET"])
 @requires_authentication(restrict = ["consumer", "administrator"])
 def get_comment_info(user_id, user_role, comment_id):
-    # Verify that the comment id is valid
-    try:
-        comment_id = int(comment_id)
-        if comment_id < 1 or comment_id > 9223372036854775807:
-            raise ValueError
-    except ValueError:
-        flask.abort(utils.StatusCodes["bad_request"], "Invalid song ID!")
-
-    conn, cur = utils.db_connect()
-
-    statement = """
-                SELECT comments.content, comments.post_time, consumers.display_name, replies.id
-                FROM comments
-                LEFT JOIN consumers ON comments.consumers_users_id = consumers.users_id
-                LEFT JOIN comments AS replies ON comments.id = replies.comments_id
-                WHERE comments.id = %s
-                """
-    values = (comment_id,)
+    if not utils.integer_validate(utils.string_to_int(comment_id), min_val = 1, max_val = 9223372036854775807):
+        flask.abort(utils.StatusCodes["bad_request"], "Invalid comment ID! Expected integer in range: 1 to 9223372036854775807")
 
     try:
+        conn, cur = utils.db_connect()
+
+        statement = """
+                    SELECT comments.content, comments.post_time, consumers.display_name, ARRAY_AGG(replies.id)
+                    FROM comments
+                    LEFT JOIN consumers ON comments.consumers_users_id = consumers.users_id
+                    LEFT JOIN comments AS replies ON comments.id = replies.comments_id
+                    WHERE comments.id = %s
+                    GROUP BY comments.content, comments.post_time, consumers.display_name
+                    """
+        values = (comment_id,)
+
         cur.execute(statement, values)
-        rows = cur.fetchall()
-        if not rows:
+        row = cur.fetchone()
+        if not row:
             response = {"results": f"No comment found with ID {comment_id}!"}
         else:
-            content, post_time, author = rows[0][:3]
-            replies_comment_id = []
-            for row in rows:
-                if row[3]:
-                    replies_comment_id.append(row[3])
+            content, post_time, author = row[0:3]
+            replies_comment_id = [reply_id for reply_id in row[3] if reply_id]
             response = {"results":
                             {
                                 "content": content,
                                 "post_time": post_time,
-                                "author": author,
-                                "replies_comment_id": replies_comment_id if replies_comment_id else ["This comment has no replies!"]
+                                "author_name": author,
+                                "replies_comment_id": replies_comment_id if replies_comment_id else None,
                             }
                         }
+
+    except werkzeug.exceptions.HTTPException:
+        raise
     except psycopg2.DatabaseError:
         flask.abort(utils.StatusCodes["internal_error"], "Database failed to execute query!")
-
     finally:
         utils.db_disconnect(conn, cur)
 
@@ -1370,42 +1395,50 @@ def get_playlist(user_id, user_role, keyword):
     keyword = keyword.replace("+", " ")
     keyword = f"%{keyword}%"
 
-    conn, cur = utils.db_connect()
-
     consumer_id = user_id
 
-    statement = """
-                SELECT id, name, consumers.display_name
-                FROM playlists
-                LEFT JOIN consumers ON playlists.consumers_users_id = consumers.users_id
-                WHERE name ILIKE %s AND private = FALSE
-                """
-    # Add extra condition to return private playlists if user is premium
-    if user_role == "premium consumer":
-        statement += "OR (private = TRUE AND consumers_users_id = %s)"
-        values = (keyword, consumer_id)
-    else:
-        values = (keyword,)
-
-    keyword = keyword.replace("%", "")
-
     try:
+        conn, cur = utils.db_connect()
+
+        statement = """
+                    SELECT id, name, consumers.display_name
+                    FROM playlists
+                    LEFT JOIN consumers ON playlists.consumers_users_id = consumers.users_id
+                    WHERE name ILIKE %s AND (private = FALSE
+                    """
+        # Add extra condition to allow interaction with private playlists if user is a premium consumer
+        if user_role == "premium consumer":
+            statement += "OR (private = TRUE AND consumers_users_id = %s))"
+            values = (keyword, consumer_id)
+        else:
+            statement += ")"
+            values = (keyword,)
+
+        keyword = keyword.replace("%", "")
+
         cur.execute(statement, values)
-        rows = cur.fetchall()
-        if not rows:
+        found_playlists  = cur.fetchall()
+        if not found_playlists:
             if user_role == "premium consumer":
                 response = {"results": f"No playlists found with keyword {keyword}!"}
-            if user_role == "consumer":
+            else:
                 response = {"results": f"No playlists found with keyword {keyword}, remember that your private playlists are only avaliable with premium!"}
         else:
-            results = []
-            for row in rows:
-                results.append({"playlist_id": row[0], "playlist_name": row[1], "creator": row[2]})
-            response = {"results": results}
-    except psycopg2.DatabaseError as e:
-        print(e)
-        flask.abort(utils.StatusCodes["internal_error"], "Database failed to execute query!")
+            response = {"results":
+                            [
+                                {
+                                    "playlist_id": playlist[0],
+                                    "name": playlist[1],
+                                    "author_name": playlist[2]
+                                }
+                            for playlist in found_playlists
+                            ]
+                        }
 
+    except werkzeug.exceptions.HTTPException:
+        raise
+    except Exception:
+        flask.abort(utils.StatusCodes["internal_error"], "Database failed to execute query!")
     finally:
         utils.db_disconnect(conn, cur)
 
@@ -1420,42 +1453,40 @@ def get_playlist_info(user_id, user_role, playlist_id):
     conn, cur = utils.db_connect()
 
     statement = """
-                SELECT name, consumers.display_name, private, songs.title
+                SELECT name, consumers.display_name, private, ARRAY_AGG(songs.title)
                 FROM playlists
                 LEFT JOIN consumers ON playlists.consumers_users_id = consumers.users_id
                 LEFT JOIN playlist_orders ON playlists.id = playlist_orders.playlists_id
                 LEFT JOIN songs ON playlist_orders.songs_id = songs.id
-                WHERE playlists.id = %s AND playlists.private = FALSE
+                WHERE playlists.id = %s AND (playlists.private = FALSE
                 """
-    # Add extra condition to return private playlists if user is premium
+    # Add extra condition to allow interaction with private playlists if user is a premium consumer
     if user_role == "premium consumer":
-        statement += "OR (playlists.private = TRUE AND consumers_users_id = %s)"
+        statement += "OR (playlists.private = TRUE AND consumers_users_id = %s))"
         values = (playlist_id, user_id)
     else:
+        statement += ")"
         values = (playlist_id,)
 
-    statement += "\nGROUP BY name, consumers.display_name, playlists.private, songs.title"
+    statement += "\nGROUP BY name, consumers.display_name, playlists.private"
 
     try:
         cur.execute(statement, values)
-        rows = cur.fetchall()
-        if not rows:
+        row = cur.fetchone()
+        if not row:
             if user_role == "premium consumer":
                 response = {"results": f"No playlist found with ID {playlist_id}!"}
-            if user_role == "consumer":
+            else:
                 response = {"results": f"No playlist found with ID {playlist_id}, remember that your private playlists are only avaliable with premium!"}
         else:
-            playlist_name, author, private = rows[0][:3]
-            song_names = []
-            for row in rows:
-                if row[3]:
-                    song_names.append(row[3])
+            playlist_name, creator_name, private = row[0:3]
+            song_names = [song_name for song_name in row[3] if song_name]
             response = {"results":
                             {
                                 "playlist_name": playlist_name,
-                                "creator": author,
+                                "creator_name": creator_name,
                                 "private": private,
-                                "song_names": song_names if song_names else ["This playlist does not have any songs yet!"]
+                                "song_names": song_names if song_names else None,
                             }
                         }
     except psycopg2.DatabaseError as e:
@@ -1509,40 +1540,41 @@ def delete_comment_thread(user_id, user_role, starting_comment_id):
     if not utils.integer_validate(utils.string_to_int(starting_comment_id), min_val = 1, max_val = 9223372036854775807):
         flask.abort(utils.StatusCodes["bad_request"], "Invalid comment ID! Expected integer in range: 1 to 9223372036854775807")
 
-    conn, cur = utils.db_connect()
-
-    # User can only delete threads they started, administrators can delete any thread as part of moderation
-    if user_role == "administrator":
-        statement = """
-                    DELETE FROM comments
-                    WHERE id = %s
-                    RETURNING id
-                    """
-        values = (starting_comment_id,)
-    if user_role == "consumer" or user_role == "premium consumer":
-        statement = """
-                    DELETE FROM comments
-                    WHERE id = %s AND consumers_users_id = %s
-                    RETURNING id
-                    """
-        values = (starting_comment_id, user_id)
-
     try:
+        conn, cur = utils.db_connect()
+
+        # User can only delete threads they started, administrators can delete any thread as part of moderation
+        if user_role == "administrator":
+            statement = """
+                        DELETE FROM comments
+                        WHERE id = %s
+                        RETURNING id
+                        """
+            values = (starting_comment_id,)
+        if user_role == "consumer" or user_role == "premium consumer":
+            statement = """
+                        DELETE FROM comments
+                        WHERE id = %s AND consumers_users_id = %s
+                        RETURNING id
+                        """
+            values = (starting_comment_id, user_id)
         cur.execute(statement, values)
-        rows = cur.fetchone()
-        conn.commit()
-        if not rows:
+
+        comment_id = cur.fetchone()
+        if not comment_id:
             if user_role == "administrator":
                 response = {"results": f"No comment found with ID {starting_comment_id}!"}
             if user_role == "consumer" or user_role == "premium consumer":
                 response = {"results": f"No comment of your authorship found with ID {starting_comment_id}!"}
         else:
             response = {"results": f"Thread deleted starting with comment ID {starting_comment_id}!"}
-    except (psycopg2.DatabaseError, psycopg2.IntegrityError, psycopg2.InternalError,
-            psycopg2.ProgrammingError, psycopg2.DataError, psycopg2.NotSupportedError,
-            psycopg2.OperationalError, psycopg2.InterfaceError, psycopg2.Error, psycopg2.Warning):
-        flask.abort(utils.StatusCodes["internal_error"], "Database failed to execute query!")
 
+        conn.commit()
+
+    except werkzeug.exceptions.HTTPException:
+        raise
+    except Exception:
+        flask.abort(utils.StatusCodes["internal_error"], "Database failed to execute query!")
     finally:
         utils.db_disconnect(conn, cur)
 
@@ -1643,7 +1675,7 @@ def forbidden(e):
     return flask.make_response(flask.jsonify(response), e.code)
 
 @app.errorhandler(404)
-def page_not_found(e):
+def not_found(e):
     response = {"errors": e.description}
     return flask.make_response(flask.jsonify(response), e.code)
 
