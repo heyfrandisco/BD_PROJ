@@ -1,1 +1,3 @@
-# Databases - Practical Assignment
+# Final Databases Class Project - Practical Assignment
+
+by [dy0gu], [heyfrandisco] & [GustaTheCreator]
